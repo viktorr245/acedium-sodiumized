@@ -10,7 +10,7 @@ displayTest = "IGNORE_SERVER_VERSION"
 authors="Cortex, Ferri_Arnus"
 description='''
 Experimental port of nvidium, bugs will be present
-Replacement rendering engine for embeddium
+Replacement rendering engine for sodium
 '''
 
 [[dependencies.acedium]]
@@ -23,14 +23,14 @@ side = "BOTH"
 [[dependencies.acedium]]
 modId = "minecraft"
 type="required"
-versionRange = "[1.21,1.22)"
+versionRange = "[1.21.1,1.22)"
 ordering = "NONE"
 side = "BOTH"
 
 [[dependencies.acedium]]
-modId="embeddium"
+modId="sodium"
 type="required"
-versionRange="[1.0.7-beta.1+mc1.21,)"
+versionRange="[0.6,)"
 ordering="NONE"
 side="CLIENT"
 
@@ -44,5 +44,5 @@ version="${version}"
 authors="Cortex"
 logoFile="assets/nvidium/nvidium.png"
 description='''
-Replacement rendering engine for sodium/embeddium
+Replacement rendering engine for sodium
 '''
