@@ -4,8 +4,8 @@ import me.cortex.nvidium.Nvidium;
 import me.cortex.nvidium.config.StatisticsLoggingLevel;
 import me.cortex.nvidium.config.TranslucencySortingLevel;
 import net.minecraft.util.Identifier;
-import org.embeddedt.embeddium.impl.gl.shader.ShaderConstants;
-import org.embeddedt.embeddium.impl.gl.shader.ShaderParser;
+import net.caffeinemc.mods.sodium.client.gl.shader.ShaderConstants;
+import net.caffeinemc.mods.sodium.client.gl.shader.ShaderParser;
 
 public class ShaderLoader {
     public static String parse(Identifier path) {
@@ -25,6 +25,6 @@ public class ShaderLoader {
 
         builder.add("TEXTURE_MAX_SCALE", String.valueOf(NvidiumCompactChunkVertex.TEXTURE_MAX_VALUE));
 
-        return ShaderParser.parseShader("#import <"+path.getNamespace()+":"+path.getPath()+">", builder.build());
+        return ShaderParser.parseShader("#import <" + path.getNamespace() + ":" + path.getPath() + ">", builder.build());
     }
 }

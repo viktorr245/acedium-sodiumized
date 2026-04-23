@@ -11,8 +11,8 @@ import me.cortex.nvidium.util.BufferArena;
 import me.cortex.nvidium.util.SegmentedManager;
 import me.cortex.nvidium.util.UploadingBufferStream;
 import net.minecraft.util.math.ChunkSectionPos;
-import org.embeddedt.embeddium.impl.render.chunk.RenderSection;
-import org.embeddedt.embeddium.impl.render.chunk.compile.ChunkBuildOutput;
+import net.caffeinemc.mods.sodium.client.render.chunk.RenderSection;
+import net.caffeinemc.mods.sodium.client.render.chunk.compile.ChunkBuildOutput;
 import org.joml.Vector3i;
 import org.joml.Vector4i;
 import org.lwjgl.system.MemoryUtil;
@@ -179,7 +179,6 @@ public class SectionManager {
         }
     }
 }
-
 
 
 

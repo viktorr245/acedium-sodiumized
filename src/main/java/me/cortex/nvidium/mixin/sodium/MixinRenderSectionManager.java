@@ -6,19 +6,20 @@ import me.cortex.nvidium.NvidiumWorldRenderer;
 import me.cortex.nvidium.managers.AsyncOcclusionTracker;
 import me.cortex.nvidium.sodiumCompat.*;
 import net.minecraft.client.render.Camera;
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.world.ClientWorld;
-import org.embeddedt.embeddium.api.render.texture.SpriteUtil;
-import org.embeddedt.embeddium.impl.Embeddium;
-import org.embeddedt.embeddium.impl.gl.device.CommandList;
-import org.embeddedt.embeddium.impl.render.chunk.ChunkRenderMatrices;
-import org.embeddedt.embeddium.impl.render.chunk.ChunkUpdateType;
-import org.embeddedt.embeddium.impl.render.chunk.RenderSection;
-import org.embeddedt.embeddium.impl.render.chunk.RenderSectionManager;
-import org.embeddedt.embeddium.impl.render.chunk.region.RenderRegionManager;
-import org.embeddedt.embeddium.impl.render.chunk.terrain.DefaultTerrainRenderPasses;
-import org.embeddedt.embeddium.impl.render.chunk.terrain.TerrainRenderPass;
-import org.embeddedt.embeddium.impl.render.chunk.vertex.format.ChunkVertexType;
-import org.embeddedt.embeddium.impl.render.viewport.Viewport;
+import net.caffeinemc.mods.sodium.api.texture.SpriteUtil;
+import net.caffeinemc.mods.sodium.client.SodiumClientMod;
+import net.caffeinemc.mods.sodium.client.gl.device.CommandList;
+import net.caffeinemc.mods.sodium.client.render.chunk.ChunkRenderMatrices;
+import net.caffeinemc.mods.sodium.client.render.chunk.ChunkUpdateType;
+import net.caffeinemc.mods.sodium.client.render.chunk.RenderSection;
+import net.caffeinemc.mods.sodium.client.render.chunk.RenderSectionManager;
+import net.caffeinemc.mods.sodium.client.render.chunk.region.RenderRegionManager;
+import net.caffeinemc.mods.sodium.client.render.chunk.terrain.DefaultTerrainRenderPasses;
+import net.caffeinemc.mods.sodium.client.render.chunk.terrain.TerrainRenderPass;
+import net.caffeinemc.mods.sodium.client.render.chunk.vertex.format.ChunkVertexType;
+import net.caffeinemc.mods.sodium.client.render.viewport.Viewport;
 import org.jetbrains.annotations.NotNull;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -34,11 +35,11 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Map;
 
-@Mixin(value = RenderSectionManager.class, remap = false)
+@Mixin(value = RenderSectionManager.class, remap = false, priority = 1500)
 public class MixinRenderSectionManager implements INvidiumWorldRendererGetter {
     @Shadow @Final private RenderRegionManager regions;
     @Shadow @Final private Long2ReferenceMap<RenderSection> sectionByPosition;
-    @Shadow private @NotNull Map<ChunkUpdateType, ArrayDeque<RenderSection>> rebuildLists;
+    @Shadow private @NotNull Map<ChunkUpdateType, ArrayDeque<RenderSection>> taskLists;
     @Shadow @Final private int renderDistance;
     @Unique private NvidiumWorldRenderer renderer;
     @Unique private Viewport viewport;
@@ -54,12 +55,12 @@ public class MixinRenderSectionManager implements INvidiumWorldRendererGetter {
         if (Nvidium.IS_ENABLED) {
             if (renderer != null)
                 throw new IllegalStateException("Cannot have multiple world renderers");
-            renderer = new NvidiumWorldRenderer(Nvidium.config.async_bfs?new AsyncOcclusionTracker(renderDistance, sectionByPosition, world, rebuildLists):null);
+            renderer = new NvidiumWorldRenderer(Nvidium.config.async_bfs?new AsyncOcclusionTracker(renderDistance, sectionByPosition, world, taskLists):null);
             ((INvidiumWorldRendererSetter)regions).setWorldRenderer(renderer);
         }
     }
 
-    @ModifyArg(method = "<init>", at = @At(value = "INVOKE", target = "Lorg/embeddedt/embeddium/impl/render/chunk/compile/executor/ChunkBuilder;<init>(Lnet/minecraft/client/world/ClientWorld;Lorg/embeddedt/embeddium/impl/render/chunk/vertex/format/ChunkVertexType;)V", remap = true), index = 1)
+    @ModifyArg(method = "<init>", at = @At(value = "INVOKE", target = "Lnet/caffeinemc/mods/sodium/client/render/chunk/compile/executor/ChunkBuilder;<init>(Lnet/minecraft/client/world/ClientWorld;Lnet/caffeinemc/mods/sodium/client/render/chunk/vertex/format/ChunkVertexType;)V", remap = true), index = 1)
     private ChunkVertexType modifyVertexType(ChunkVertexType vertexType) {
         updateNvidiumIsEnabled();
         if (Nvidium.IS_ENABLED) {
@@ -80,7 +81,7 @@ public class MixinRenderSectionManager implements INvidiumWorldRendererGetter {
         }
     }
 
-    @Redirect(method = "onSectionRemoved", at = @At(value = "INVOKE", target = "Lorg/embeddedt/embeddium/impl/render/chunk/RenderSection;delete()V"))
+    @Redirect(method = "onSectionRemoved", at = @At(value = "INVOKE", target = "Lnet/caffeinemc/mods/sodium/client/render/chunk/RenderSection;delete()V"))
     private void deleteSection(RenderSection section) {
         if (Nvidium.IS_ENABLED) {
             if (Nvidium.config.region_keep_distance == 32) {
@@ -91,7 +92,7 @@ public class MixinRenderSectionManager implements INvidiumWorldRendererGetter {
     }
 
     @Inject(method = "update", at = @At("HEAD"))
-    private void trackViewport(Camera camera, Viewport viewport, int frame, boolean spectator, CallbackInfo ci) {
+    private void trackViewport(Camera camera, Viewport viewport, boolean spectator, CallbackInfo ci) {
         this.viewport = viewport;
     }
 
@@ -131,7 +132,7 @@ public class MixinRenderSectionManager implements INvidiumWorldRendererGetter {
         }
     }
 
-    @Redirect(method = "submitRebuildTasks", at = @At(value = "INVOKE", target = "Lorg/embeddedt/embeddium/impl/render/chunk/RenderSection;setPendingUpdate(Lorg/embeddedt/embeddium/impl/render/chunk/ChunkUpdateType;)V"))
+    @Redirect(method = "submitSectionTasks(Lnet/caffeinemc/mods/sodium/client/render/chunk/compile/executor/ChunkJobCollector;Lnet/caffeinemc/mods/sodium/client/render/chunk/ChunkUpdateType;Z)V", at = @At(value = "INVOKE", target = "Lnet/caffeinemc/mods/sodium/client/render/chunk/RenderSection;setPendingUpdate(Lnet/caffeinemc/mods/sodium/client/render/chunk/ChunkUpdateType;)V"))
     private void injectEnqueueFalse(RenderSection instance, ChunkUpdateType type) {
         instance.setPendingUpdate(type);
         if (Nvidium.IS_ENABLED && Nvidium.config.async_bfs) {
@@ -148,7 +149,7 @@ public class MixinRenderSectionManager implements INvidiumWorldRendererGetter {
         return delta <= 1;
     }
 
-    @Inject(method = "isSectionVisible", at = @At(value = "INVOKE", target = "Lorg/embeddedt/embeddium/impl/render/chunk/RenderSection;getLastVisibleFrame()I", shift = At.Shift.BEFORE), cancellable = true, locals = LocalCapture.CAPTURE_FAILHARD)
+    @Inject(method = "isSectionVisible", at = @At(value = "INVOKE", target = "Lnet/caffeinemc/mods/sodium/client/render/chunk/RenderSection;getLastVisibleFrame()I", shift = At.Shift.BEFORE), cancellable = true, locals = LocalCapture.CAPTURE_FAILHARD)
     private void redirectIsSectionVisible(int x, int y, int z, CallbackInfoReturnable<Boolean> cir, RenderSection render) {
         if (Nvidium.IS_ENABLED && Nvidium.config.async_bfs) {
             cir.setReturnValue(isSectionVisibleBfs(render));
@@ -157,26 +158,25 @@ public class MixinRenderSectionManager implements INvidiumWorldRendererGetter {
 
     @Inject(method = "tickVisibleRenders", at = @At("HEAD"), cancellable = true)
     private void redirectAnimatedSpriteUpdates(CallbackInfo ci) {
-        if (Nvidium.IS_ENABLED && Nvidium.config.async_bfs && Embeddium.options().performance.animateOnlyVisibleTextures) {
+        if (Nvidium.IS_ENABLED && Nvidium.config.async_bfs && SodiumClientMod.options().performance.animateOnlyVisibleTextures) {
             ci.cancel();
             var sprites = renderer.getAnimatedSpriteSet();
             if (sprites == null) {
                 return;
             }
             for (var sprite : sprites) {
-                SpriteUtil.markSpriteActive(sprite);
+                SpriteUtil.INSTANCE.markSpriteActive(sprite);
             }
         }
     }
 
-    @Inject(method = "scheduleRebuild", at = @At(value = "INVOKE", target = "Lorg/embeddedt/embeddium/impl/render/chunk/RenderSection;setPendingUpdate(Lorg/embeddedt/embeddium/impl/render/chunk/ChunkUpdateType;)V", shift = At.Shift.AFTER), locals = LocalCapture.CAPTURE_FAILHARD)
+    @Inject(method = "scheduleRebuild", at = @At(value = "INVOKE", target = "Lnet/caffeinemc/mods/sodium/client/render/chunk/RenderSection;setPendingUpdate(Lnet/caffeinemc/mods/sodium/client/render/chunk/ChunkUpdateType;)V", shift = At.Shift.AFTER), locals = LocalCapture.CAPTURE_FAILHARD)
     private void instantReschedule(int x, int y, int z, boolean important, CallbackInfo ci, RenderSection section, ChunkUpdateType pendingUpdate) {
         if (Nvidium.IS_ENABLED && Nvidium.config.async_bfs) {
-            var queue = rebuildLists.get(pendingUpdate);
-            //TODO:FIXME: this might result in the section being enqueued multiple times, if this gets executed, and the async search sees it at the exactly wrong moment
-            if (isSectionVisibleBfs(section) && queue.size() < pendingUpdate.getMaximumQueueSize()) {
+            var queue = taskLists.get(pendingUpdate);
+            if (isSectionVisibleBfs(section) && queue.size() < pendingUpdate.getMaximumQueueSize() && !queue.contains(section)) {
                 ((IRenderSectionExtension)section).isSubmittedRebuild(true);
-                rebuildLists.get(pendingUpdate).add(section);
+                taskLists.get(pendingUpdate).add(section);
             }
         }
     }

@@ -8,11 +8,12 @@ import me.cortex.nvidium.util.DownloadTaskStream;
 import me.cortex.nvidium.util.UploadingBufferStream;
 import net.minecraft.client.render.Camera;
 import net.minecraft.client.texture.Sprite;
-import org.embeddedt.embeddium.impl.Embeddium;
-import org.embeddedt.embeddium.impl.render.chunk.ChunkRenderMatrices;
-import org.embeddedt.embeddium.impl.render.chunk.RenderSection;
-import org.embeddedt.embeddium.impl.render.chunk.compile.ChunkBuildOutput;
-import org.embeddedt.embeddium.impl.render.viewport.Viewport;
+import net.caffeinemc.mods.sodium.client.SodiumClientMod;
+import net.caffeinemc.mods.sodium.client.render.chunk.ChunkRenderMatrices;
+import net.caffeinemc.mods.sodium.client.render.chunk.RenderSection;
+import net.caffeinemc.mods.sodium.client.render.chunk.compile.BuilderTaskOutput;
+import net.caffeinemc.mods.sodium.client.render.chunk.compile.ChunkBuildOutput;
+import net.caffeinemc.mods.sodium.client.render.viewport.Viewport;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix4fc;
 
@@ -40,7 +41,7 @@ public class NvidiumWorldRenderer {
 
     //Note: the reason that asyncChunkTracker is passed in as an already constructed object is cause of the amount of argmuents it takes to construct it
     public NvidiumWorldRenderer(AsyncOcclusionTracker asyncChunkTracker) {
-        int frames = Embeddium.options().advanced.cpuRenderAheadLimit+1;
+        int frames = SodiumClientMod.options().advanced.cpuRenderAheadLimit + 1;
         //32 mb upload buffer
         this.uploadStream = new UploadingBufferStream(device, 32000000);
         //8 mb download buffer
@@ -96,8 +97,10 @@ public class NvidiumWorldRenderer {
         this.sectionManager.deleteSection(section);
     }
 
-    public void uploadBuildResult(ChunkBuildOutput buildOutput) {
-        this.sectionManager.uploadChunkBuildResult(buildOutput);
+    public void uploadBuildResult(BuilderTaskOutput buildOutput) {
+        if (buildOutput instanceof ChunkBuildOutput chunkBuildOutput) {
+            this.sectionManager.uploadChunkBuildResult(chunkBuildOutput);
+        }
     }
 
     public void addDebugInfo(ArrayList<String> debugInfo) {
@@ -127,7 +130,7 @@ public class NvidiumWorldRenderer {
         }
     }
 
-    public void update(Camera camera, Viewport viewport, int frame, boolean spectator) {
+    public void update(Camera camera, Viewport viewport, boolean spectator) {
         if (asyncChunkTracker != null) {
             asyncChunkTracker.update(viewport, camera, spectator);
         }

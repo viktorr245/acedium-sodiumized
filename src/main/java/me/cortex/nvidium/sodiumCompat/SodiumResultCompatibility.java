@@ -2,16 +2,16 @@ package me.cortex.nvidium.sodiumCompat;
 
 import it.unimi.dsi.fastutil.longs.LongArrays;
 import net.minecraft.client.MinecraftClient;
-import org.embeddedt.embeddium.impl.render.chunk.compile.ChunkBuildOutput;
-import org.embeddedt.embeddium.impl.render.chunk.terrain.DefaultTerrainRenderPasses;
-import org.embeddedt.embeddium.impl.util.NativeBuffer;
+import net.caffeinemc.mods.sodium.client.render.chunk.compile.ChunkBuildOutput;
+import net.caffeinemc.mods.sodium.client.render.chunk.terrain.DefaultTerrainRenderPasses;
+import net.caffeinemc.mods.sodium.client.util.NativeBuffer;
 import org.joml.Vector3i;
 import org.lwjgl.system.MemoryUtil;
 
 public class SodiumResultCompatibility {
 
     public static RepackagedSectionOutput repackage(ChunkBuildOutput result) {
-        int formatSize = 16;
+        int formatSize = NvidiumCompactChunkVertex.STRIDE;
         int geometryBytes = result.meshes.values().stream().mapToInt(a->a.getVertexData().getLength()).sum();
         var output = new NativeBuffer(geometryBytes);
         var offsets = new short[8];
@@ -49,7 +49,7 @@ public class SodiumResultCompatibility {
 
     private static void copyQuad(long from, long too) {
         //Quads are 64 bytes big
-        for (long i = 0; i < 64; i+=8) {
+        for (long i = 0; i < 64; i += 8) {
             MemoryUtil.memPutLong(too + i, MemoryUtil.memGetLong(from + i));
         }
     }
@@ -82,65 +82,59 @@ public class SodiumResultCompatibility {
         }
 
         //Do translucent first
-        var translucentData  = result.meshes.get(DefaultTerrainRenderPasses.TRANSLUCENT);
+        var translucentData = result.meshes.get(DefaultTerrainRenderPasses.TRANSLUCENT);
         if (translucentData != null) {
             int quadCount = 0;
             for (int i = 0; i < 7; i++) {
-                var part = translucentData.getVertexRanges()[i];
-                quadCount += part != null?part.vertexCount()/4:0;
+                quadCount += translucentData.getVertexCounts()[i] / 4;
             }
             int quadId = 0;
             long[] sortingData = new long[quadCount];
             long[] srcs = new long[7];
+            int partOffset = 0;
             for (int i = 0; i < 7; i++) {
-                var part = translucentData.getVertexRanges()[i];
-                if (part != null) {
-                    long src = MemoryUtil.memAddress(translucentData.getVertexData().getDirectBuffer()) + (long) part.vertexStart() * formatSize;
-                    srcs[i] = src;
+                int part = translucentData.getVertexCounts()[i];
+                long src = MemoryUtil.memAddress(translucentData.getVertexData().getDirectBuffer()) + (long) partOffset * formatSize;
+                srcs[i] = src;
 
-                    float cx = 0;
-                    float cy = 0;
-                    float cz = 0;
-                    //Update the meta bits of the model format
-                    for (int j = 0; j < part.vertexCount(); j++) {
-                        long base = src + (long) j * formatSize;
-                        byte flags = (byte) 0b100;//Mipping, No alpha cut
-                        MemoryUtil.memPutByte(base + 6L, flags);//Note: the 6 here is the offset into the vertex format
+                float cx = 0;
+                float cy = 0;
+                float cz = 0;
 
-                        float x = decodePosition(MemoryUtil.memGetShort(base));
-                        float y = decodePosition(MemoryUtil.memGetShort(base + 2));
-                        float z = decodePosition(MemoryUtil.memGetShort(base + 4));
-                        updateSectionBounds(min, max, x, y, z);
+                for (int j = 0; j < part; j++) {
+                    long base = src + (long) j * formatSize;
 
-                        cx += x;
-                        cy += y;
-                        cz += z;
+                    float x = decodePosition(MemoryUtil.memGetShort(base));
+                    float y = decodePosition(MemoryUtil.memGetShort(base + 2));
+                    float z = decodePosition(MemoryUtil.memGetShort(base + 4));
+                    updateSectionBounds(min, max, x, y, z);
 
-                        if ((j&3) == 3) {
-                            //Compute the center point of the vertex
-                            cx *= 1 / 4f;
-                            cy *= 1 / 4f;
-                            cz *= 1 / 4f;
+                    cx += x;
+                    cy += y;
+                    cz += z;
 
-                            //Distance to camera
-                            float dx = cx-cpx;
-                            float dy = cy-cpy;
-                            float dz = cz-cpz;
+                    if ((j & 3) == 3) {
+                        cx *= 0.25f;
+                        cy *= 0.25f;
+                        cz *= 0.25f;
 
-                            float dist = dx*dx + dy*dy + dz*dz;
+                        float dx = cx - cpx;
+                        float dy = cy - cpy;
+                        float dz = cz - cpz;
 
-                            int sortDistance = (int) (dist*(1<<12));
+                        float dist = dx * dx + dy * dy + dz * dz;
+                        int sortDistance = (int) (dist * (1 << 12));
 
-                            //We pack the sorting data
-                            long packedSortingData = (((long)sortDistance)<<32)|((((long) j>>2)<<3)|i);
-                            sortingData[quadId++] = packedSortingData;
+                        long packedSortingData = (((long) sortDistance) << 32) | ((((long) j >> 2) << 3) | i);
+                        sortingData[quadId++] = packedSortingData;
 
-                            cx = 0;
-                            cy = 0;
-                            cz = 0;
-                        }
+                        cx = 0;
+                        cy = 0;
+                        cz = 0;
                     }
                 }
+
+                partOffset += part;
             }
 
             if (quadId != sortingData.length) {
@@ -161,55 +155,45 @@ public class SodiumResultCompatibility {
         outOffsets[7] = (short) offset;
 
 
-        var solid  = result.meshes.get(DefaultTerrainRenderPasses.SOLID);
+        var solid = result.meshes.get(DefaultTerrainRenderPasses.SOLID);
         var cutout = result.meshes.get(DefaultTerrainRenderPasses.CUTOUT);
 
         //Do all but translucent
+        int solidPartOffset = 0;
+        int cutoutPartOffset = 0;
         for (int i = 0; i < 7; i++) {
             int poff = offset;
             if (solid != null) {
-                var part = solid.getVertexRanges()[i];
-                if (part != null) {
-                    long src = MemoryUtil.memAddress(solid.getVertexData().getDirectBuffer()) + (long) part.vertexStart() * formatSize;
+                int part = solid.getVertexCounts()[i];
+                if (part > 0) {
+                    long src = MemoryUtil.memAddress(solid.getVertexData().getDirectBuffer()) + (long) solidPartOffset * formatSize;
                     long dst = outPtr + offset * 4L * formatSize;
-                    MemoryUtil.memCopy(src, dst, (long) part.vertexCount() * formatSize);
+                    MemoryUtil.memCopy(src, dst, (long) part * formatSize);
 
-                    //Update the meta bits of the model format
-                    for (int j = 0; j < part.vertexCount(); j++) {
-                        long base = dst+ (long) j * formatSize;
-                        byte flags = (byte) 0b100;//Mipping, No alpha cut
-                        MemoryUtil.memPutByte(base + 6L, flags);//Note: the 6 here is the offset into the vertex format
-
+                    for (int j = 0; j < part; j++) {
+                        long base = dst + (long) j * formatSize;
                         updateSectionBounds(min, max, base);
                     }
 
-                    offset += part.vertexCount()/4;
+                    offset += part / 4;
                 }
+                solidPartOffset += part;
             }
             if (cutout != null) {
-                var part = cutout.getVertexRanges()[i];
-                if (part != null) {
-                    long src = MemoryUtil.memAddress(cutout.getVertexData().getDirectBuffer()) + (long) part.vertexStart() * formatSize;
+                int part = cutout.getVertexCounts()[i];
+                if (part > 0) {
+                    long src = MemoryUtil.memAddress(cutout.getVertexData().getDirectBuffer()) + (long) cutoutPartOffset * formatSize;
                     long dst = outPtr + offset * 4L * formatSize;
-                    MemoryUtil.memCopy(src, dst, (long) part.vertexCount() * formatSize);
+                    MemoryUtil.memCopy(src, dst, (long) part * formatSize);
 
-                    //Update the meta bits of the model format
-                    for (int j = 0; j < part.vertexCount(); j++) {
+                    for (int j = 0; j < part; j++) {
                         long base = dst + (long) j * formatSize;
-                        short sflags = MemoryUtil.memGetByte(base + 6L);
-                        short mipbits = (short) ((sflags&(3<<1))>>1);
-                        //mipping, remap 0.5 cut to 0.1 when iris is loaded
-                        if (mipbits == 0b10 && IrisCheck.IRIS_LOADED) {
-                            mipbits = 0b01;
-                        }
-                        byte flags = (byte) (((sflags&1)<<2) | mipbits);
-                        MemoryUtil.memPutByte(base + 6L, flags);//Note: the 6 here is the offset into the vertex format
-
                         updateSectionBounds(min, max, base);
                     }
 
-                    offset += part.vertexCount()/4;
+                    offset += part / 4;
                 }
+                cutoutPartOffset += part;
             }
             outOffsets[i] = (short) (offset - poff);
         }

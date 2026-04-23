@@ -8,7 +8,7 @@ import me.cortex.nvidium.gl.buffers.IDeviceMappedBuffer;
 import me.cortex.nvidium.util.IdProvider;
 import me.cortex.nvidium.util.UploadingBufferStream;
 import net.minecraft.util.math.ChunkSectionPos;
-import org.embeddedt.embeddium.impl.render.viewport.Viewport;
+import net.caffeinemc.mods.sodium.client.render.viewport.Viewport;
 import org.lwjgl.system.MemoryUtil;
 
 import java.util.ArrayDeque;

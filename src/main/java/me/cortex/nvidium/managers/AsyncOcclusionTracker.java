@@ -9,12 +9,12 @@ import net.minecraft.client.texture.Sprite;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.world.World;
-import org.embeddedt.embeddium.impl.Embeddium;
-import org.embeddedt.embeddium.impl.render.chunk.ChunkUpdateType;
-import org.embeddedt.embeddium.impl.render.chunk.RenderSection;
-import org.embeddedt.embeddium.impl.render.chunk.RenderSectionFlags;
-import org.embeddedt.embeddium.impl.render.chunk.occlusion.OcclusionCuller;
-import org.embeddedt.embeddium.impl.render.viewport.Viewport;
+import net.caffeinemc.mods.sodium.client.SodiumClientMod;
+import net.caffeinemc.mods.sodium.client.render.chunk.ChunkUpdateType;
+import net.caffeinemc.mods.sodium.client.render.chunk.RenderSection;
+import net.caffeinemc.mods.sodium.client.render.chunk.RenderSectionFlags;
+import net.caffeinemc.mods.sodium.client.render.chunk.occlusion.OcclusionCuller;
+import net.caffeinemc.mods.sodium.client.render.viewport.Viewport;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
@@ -65,22 +65,19 @@ public class AsyncOcclusionTracker {
             if (!running) break;
             long startTime = System.currentTimeMillis();
 
-            final boolean animateVisibleSpritesOnly = Embeddium.options().performance.animateOnlyVisibleTextures;
+            final boolean animateVisibleSpritesOnly = SodiumClientMod.options().performance.animateOnlyVisibleTextures;
             //The reason for batching is so that ordering is strongly defined
             List<RenderSection> chunkUpdates = new ArrayList<>();
             List<RenderSection> blockEntitySections = new ArrayList<>();
             Set<Sprite> animatedSpriteSet = animateVisibleSpritesOnly?new HashSet<>():null;
             int[] visibleGeometryCounter = new int[1];
-            final OcclusionCuller.Visitor visitor = (section, visible) -> {
-                if (section.getPendingUpdate() != null && section.getBuildCancellationToken() == null) {
+            final OcclusionCuller.Visitor visitor = (section) -> {
+                if (section.getPendingUpdate() != null && section.getTaskCancellationToken() == null) {
                     if ((!((IRenderSectionExtension)section).isSubmittedRebuild()) && !((IRenderSectionExtension)section).isSeen()) {//If it is in submission queue or seen dont enqueue
                         //Set that the section has been seen
                         ((IRenderSectionExtension)section).isSeen(true);
                         chunkUpdates.add(section);
                     }
-                }
-                if (!visible) {
-                    return;
                 }
 
                 if ((section.getFlags()&(1<<RenderSectionFlags.HAS_BLOCK_GEOMETRY))!=0) {
@@ -144,7 +141,7 @@ public class AsyncOcclusionTracker {
                 if (section.isDisposed())
                     continue;
                 var type = section.getPendingUpdate();
-                if (type != null && section.getBuildCancellationToken() == null) {
+                if (type != null && section.getTaskCancellationToken() == null) {
                     var queue = outputRebuildQueue.get(type);
                     if (queue.size() < type.getMaximumQueueSize()) {
                         ((IRenderSectionExtension) section).isSubmittedRebuild(true);
@@ -174,7 +171,7 @@ public class AsyncOcclusionTracker {
 
     private float getSearchDistance2() {
         float distance;
-        if (Embeddium.options().performance.useFogOcclusion) {
+        if (SodiumClientMod.options().performance.useFogOcclusion) {
             distance = this.getEffectiveRenderDistance();
         } else {
             distance = this.getRenderDistance();

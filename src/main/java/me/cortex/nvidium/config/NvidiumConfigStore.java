@@ -1,7 +1,7 @@
 package me.cortex.nvidium.config;
 
 import me.cortex.nvidium.Nvidium;
-import org.embeddedt.embeddium.api.options.structure.OptionStorage;
+import net.caffeinemc.mods.sodium.client.gui.options.storage.OptionStorage;
 
 public class NvidiumConfigStore implements OptionStorage<NvidiumConfig> {
     public static final NvidiumConfigStore INSTANCE = new NvidiumConfigStore();

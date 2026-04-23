@@ -2,7 +2,7 @@ package me.cortex.nvidium.mixin.sodium;
 
 import me.cortex.nvidium.sodiumCompat.NvidiumOptionFlags;
 import org.apache.commons.lang3.ArrayUtils;
-import org.embeddedt.embeddium.api.options.structure.OptionFlag;
+import net.caffeinemc.mods.sodium.client.gui.options.OptionFlag;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Mutable;
