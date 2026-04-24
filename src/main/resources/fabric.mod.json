@@ -1,11 +1,13 @@
 {
   "schemaVersion": 1,
-  "id": "nvidium",
+  "id": "acedium",
   "version": "${version}",
   "name": "Acedium Sodiumized",
-  "description": "Replacement rendering engine for sodium",
+  "description": "Unofficial continuation of Acedium, a NeoForge port of Nvidium, updated for Sodium 0.6.x on NeoForge 1.21.1.",
   "authors": [
-    "Cortex"
+    "Cortex",
+    "Ferri_Arnus",
+    "viktorr245"
   ],
   "contact": {},
   "license": "LGPL-3.0",
@@ -17,7 +19,7 @@
   ],
   "depends": {
     "fabricloader": ">=0.15",
-    "minecraft": ">=1.21",
-    "sodium": ["=0.5.9", "=0.5.11"]
+    "minecraft": ">=1.21.1 <1.22-",
+    "sodium": ">=0.6.0 <0.7-"
   }
 }

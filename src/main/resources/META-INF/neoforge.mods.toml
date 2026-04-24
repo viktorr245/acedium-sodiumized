@@ -7,10 +7,9 @@ version="${version}"
 displayName="Acedium Sodiumized"
 displayTest = "IGNORE_SERVER_VERSION"
 #logoFile="assets/nvidium/nvidium.png"
-authors="Cortex, Ferri_Arnus"
+authors="Cortex, Ferri_Arnus, viktorr245"
 description='''
-Experimental port of nvidium, bugs will be present
-Replacement rendering engine for sodium
+Unofficial continuation of Acedium, a NeoForge port of Nvidium, updated for Sodium 0.6.x on NeoForge 1.21.1.
 '''
 
 [[dependencies.acedium]]
