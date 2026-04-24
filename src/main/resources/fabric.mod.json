@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "nvidium",
   "version": "${version}",
-  "name": "Nvidium",
+  "name": "Acedium Sodiumized",
   "description": "Replacement rendering engine for sodium",
   "authors": [
     "Cortex"

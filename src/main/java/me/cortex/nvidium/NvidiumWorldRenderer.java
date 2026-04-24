@@ -104,7 +104,7 @@ public class NvidiumWorldRenderer {
     }
 
     public void addDebugInfo(ArrayList<String> debugInfo) {
-        debugInfo.add("Using nvidium renderer: "+ Nvidium.MOD_VERSION);
+        debugInfo.add("Using Acedium Sodiumized renderer: " + Nvidium.MOD_VERSION);
         /*
         debugInfo.add("Memory limit: " + max_geometry_memory + " mb");
         debugInfo.add("Terrain Memory MB: " +);

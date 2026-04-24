@@ -25,8 +25,8 @@ public class ConfigGuiBuilder {
 
         groups.add(OptionGroup.createBuilder()
                 .add(OptionImpl.createBuilder(boolean.class, store)
-                        .setName(Text.literal("Disable nvidium"))
-                        .setTooltip(Text.literal("Used to disable nvidium (DOES NOT SAVE, WILL RE-ENABLE AFTER A RE-LAUNCH)"))
+                        .setName(Text.literal("Disable Acedium Sodiumized"))
+                        .setTooltip(Text.literal("Used to disable Acedium Sodiumized (does not save, will re-enable after a relaunch)"))
                         .setControl(TickBoxControl::new)
                         .setImpact(OptionImpact.HIGH)
                         .setBinding((opts, value) -> Nvidium.FORCE_DISABLE = value, opts -> Nvidium.FORCE_DISABLE)
@@ -37,8 +37,8 @@ public class ConfigGuiBuilder {
         if (Nvidium.IS_COMPATIBLE && !Nvidium.IS_ENABLED && !Nvidium.FORCE_DISABLE) {
             groups.add(OptionGroup.createBuilder()
                     .add(OptionImpl.createBuilder(boolean.class, store)
-                            .setName(Text.literal("Nvidium disabled due to shaders being loaded"))
-                            .setTooltip(Text.literal("Nvidium disabled due to shaders being loaded"))
+                            .setName(Text.literal("Acedium Sodiumized disabled due to shaders being loaded"))
+                            .setTooltip(Text.literal("Acedium Sodiumized disabled due to shaders being loaded"))
                             .setControl(TickBoxControl::new)
                             .setImpact(OptionImpact.VARIES)
                             .setBinding((opts, value) -> {}, opts -> false)

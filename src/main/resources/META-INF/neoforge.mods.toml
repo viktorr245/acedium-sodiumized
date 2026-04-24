@@ -4,7 +4,7 @@ license="LGPL-3.0"
 [[mods]]
 modId="acedium"
 version="${version}"
-displayName="Acedium"
+displayName="Acedium Sodiumized"
 displayTest = "IGNORE_SERVER_VERSION"
 #logoFile="assets/nvidium/nvidium.png"
 authors="Cortex, Ferri_Arnus"
@@ -36,13 +36,3 @@ side="CLIENT"
 
 [[mixins]]
 config = "nvidium.mixins.json"
-
-[[mods]]
-modId="nvidium"
-displayName="Nvidium (Acedium)"
-version="${version}"
-authors="Cortex"
-logoFile="assets/nvidium/nvidium.png"
-description='''
-Replacement rendering engine for sodium
-'''
