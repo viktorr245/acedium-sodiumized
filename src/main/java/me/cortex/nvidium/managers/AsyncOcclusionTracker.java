@@ -17,6 +17,7 @@ import net.caffeinemc.mods.sodium.client.render.chunk.occlusion.OcclusionCuller;
 import net.caffeinemc.mods.sodium.client.render.viewport.Viewport;
 import org.jetbrains.annotations.Nullable;
 
+import java.lang.reflect.Proxy;
 import java.util.*;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicReference;
@@ -71,31 +72,37 @@ public class AsyncOcclusionTracker {
             List<RenderSection> blockEntitySections = new ArrayList<>();
             Set<Sprite> animatedSpriteSet = animateVisibleSpritesOnly?new HashSet<>():null;
             int[] visibleGeometryCounter = new int[1];
-            final OcclusionCuller.Visitor visitor = (section) -> {
-                if (section.getPendingUpdate() != null && section.getTaskCancellationToken() == null) {
-                    if ((!((IRenderSectionExtension)section).isSubmittedRebuild()) && !((IRenderSectionExtension)section).isSeen()) {//If it is in submission queue or seen dont enqueue
-                        //Set that the section has been seen
-                        ((IRenderSectionExtension)section).isSeen(true);
-                        chunkUpdates.add(section);
-                    }
-                }
+            final OcclusionCuller.Visitor visitor = (OcclusionCuller.Visitor) Proxy.newProxyInstance(
+                    OcclusionCuller.Visitor.class.getClassLoader(),
+                    new Class[]{OcclusionCuller.Visitor.class},
+                    (proxy, method, args) -> {
+                        if ("visit".equals(method.getName()) && args != null && args.length >= 1) {
+                            this.visitSection(
+                                    (RenderSection) args[0],
+                                    chunkUpdates,
+                                    blockEntitySections,
+                                    animatedSpriteSet,
+                                    visibleGeometryCounter,
+                                    animateVisibleSpritesOnly
+                            );
+                            return null;
+                        }
 
-                if ((section.getFlags()&(1<<RenderSectionFlags.HAS_BLOCK_GEOMETRY))!=0) {
-                    visibleGeometryCounter[0]++;
-                }
+                        if ("toString".equals(method.getName())) {
+                            return "AsyncOcclusionTrackerVisitor";
+                        }
 
-                if ((section.getFlags()&(1<<RenderSectionFlags.HAS_BLOCK_ENTITIES))!=0 &&
-                        section.getPosition().isWithinDistance(viewport.getChunkCoord(),33)) {//32 rd max chunk distance
-                    blockEntitySections.add(section);
-                }
-                if (animateVisibleSpritesOnly && (section.getFlags()&(1<<RenderSectionFlags.HAS_ANIMATED_SPRITES)) != 0 &&
-                        section.getPosition().isWithinDistance(viewport.getChunkCoord(),33)) {//32 rd max chunk distance (i.e. only animate sprites up to 32 chunks away)
-                    var animatedSprites = section.getAnimatedSprites();
-                    if (animatedSprites != null) {
-                        animatedSpriteSet.addAll(List.of(animatedSprites));
+                        if ("hashCode".equals(method.getName())) {
+                            return System.identityHashCode(proxy);
+                        }
+
+                        if ("equals".equals(method.getName())) {
+                            return args != null && args.length > 0 && proxy == args[0];
+                        }
+
+                        return null;
                     }
-                }
-            };
+            );
 
             frame++;
             float searchDistance = this.getSearchDistance();
@@ -123,6 +130,32 @@ public class AsyncOcclusionTracker {
             blockEntitySectionsRef.set(blockEntitySections);
             visibleAnimatedSpritesRef.set(animatedSpriteSet==null?null:animatedSpriteSet.toArray(new Sprite[0]));
             iterationTimeMillis = System.currentTimeMillis() - startTime;
+        }
+    }
+
+    private void visitSection(RenderSection section, List<RenderSection> chunkUpdates, List<RenderSection> blockEntitySections, @Nullable Set<Sprite> animatedSpriteSet, int[] visibleGeometryCounter, boolean animateVisibleSpritesOnly) {
+        if (section.getPendingUpdate() != null && section.getTaskCancellationToken() == null) {
+            if ((!((IRenderSectionExtension)section).isSubmittedRebuild()) && !((IRenderSectionExtension)section).isSeen()) {//If it is in submission queue or seen dont enqueue
+                //Set that the section has been seen
+                ((IRenderSectionExtension)section).isSeen(true);
+                chunkUpdates.add(section);
+            }
+        }
+
+        if ((section.getFlags()&(1<<RenderSectionFlags.HAS_BLOCK_GEOMETRY))!=0) {
+            visibleGeometryCounter[0]++;
+        }
+
+        if ((section.getFlags()&(1<<RenderSectionFlags.HAS_BLOCK_ENTITIES))!=0 &&
+                section.getPosition().isWithinDistance(viewport.getChunkCoord(),33)) {//32 rd max chunk distance
+            blockEntitySections.add(section);
+        }
+        if (animateVisibleSpritesOnly && (section.getFlags()&(1<<RenderSectionFlags.HAS_ANIMATED_SPRITES)) != 0 &&
+                section.getPosition().isWithinDistance(viewport.getChunkCoord(),33)) {//32 rd max chunk distance (i.e. only animate sprites up to 32 chunks away)
+            var animatedSprites = section.getAnimatedSprites();
+            if (animatedSprites != null) {
+                animatedSpriteSet.addAll(List.of(animatedSprites));
+            }
         }
     }
 

@@ -5,10 +5,10 @@ import me.cortex.nvidium.Nvidium;
 import me.cortex.nvidium.NvidiumWorldRenderer;
 import me.cortex.nvidium.managers.AsyncOcclusionTracker;
 import me.cortex.nvidium.sodiumCompat.*;
+import net.minecraft.client.texture.Sprite;
 import net.minecraft.client.render.Camera;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.world.ClientWorld;
-import net.caffeinemc.mods.sodium.api.texture.SpriteUtil;
 import net.caffeinemc.mods.sodium.client.SodiumClientMod;
 import net.caffeinemc.mods.sodium.client.gl.device.CommandList;
 import net.caffeinemc.mods.sodium.client.render.chunk.ChunkRenderMatrices;
@@ -37,6 +37,11 @@ import java.util.Map;
 
 @Mixin(value = RenderSectionManager.class, remap = false, priority = 1500)
 public class MixinRenderSectionManager implements INvidiumWorldRendererGetter {
+    @Unique
+    private static final String SODIUM_API_SPRITE_UTIL = "net.caffeinemc.mods.sodium.api.texture.SpriteUtil";
+    @Unique
+    private static final String SODIUM_CLIENT_SPRITE_UTIL = "net.caffeinemc.mods.sodium.client.render.texture.SpriteUtil";
+
     @Shadow @Final private RenderRegionManager regions;
     @Shadow @Final private Long2ReferenceMap<RenderSection> sectionByPosition;
     @Shadow private @NotNull Map<ChunkUpdateType, ArrayDeque<RenderSection>> taskLists;
@@ -149,6 +154,25 @@ public class MixinRenderSectionManager implements INvidiumWorldRendererGetter {
         return delta <= 1;
     }
 
+    @Unique
+    private static void markSpriteActive(Sprite sprite) {
+        try {
+            var apiClass = Class.forName(SODIUM_API_SPRITE_UTIL);
+            var instance = apiClass.getField("INSTANCE").get(null);
+            apiClass.getMethod("markSpriteActive", Sprite.class).invoke(instance, sprite);
+            return;
+        } catch (ReflectiveOperationException ignored) {
+        }
+
+        try {
+            var clientClass = Class.forName(SODIUM_CLIENT_SPRITE_UTIL);
+            clientClass.getMethod("markSpriteActive", Sprite.class).invoke(null, sprite);
+            return;
+        } catch (ReflectiveOperationException e) {
+            throw new RuntimeException("Failed to mark Sodium animated sprites as active", e);
+        }
+    }
+
     @Inject(method = "isSectionVisible", at = @At(value = "INVOKE", target = "Lnet/caffeinemc/mods/sodium/client/render/chunk/RenderSection;getLastVisibleFrame()I", shift = At.Shift.BEFORE), cancellable = true, locals = LocalCapture.CAPTURE_FAILHARD)
     private void redirectIsSectionVisible(int x, int y, int z, CallbackInfoReturnable<Boolean> cir, RenderSection render) {
         if (Nvidium.IS_ENABLED && Nvidium.config.async_bfs) {
@@ -165,7 +189,7 @@ public class MixinRenderSectionManager implements INvidiumWorldRendererGetter {
                 return;
             }
             for (var sprite : sprites) {
-                SpriteUtil.INSTANCE.markSpriteActive(sprite);
+                markSpriteActive(sprite);
             }
         }
     }
