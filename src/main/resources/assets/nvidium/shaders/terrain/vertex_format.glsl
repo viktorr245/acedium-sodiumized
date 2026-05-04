@@ -23,6 +23,9 @@ vec2 decodeVertexUV(Vertex v) {
 }
 
 float decodeVertexMippingBias(Vertex v) {
+    if (((v.y >> 16) & int16_t(3)) != 0) {
+        return 0;
+    }
     return ((v.y>>16)&4)==0?-8:0;
 }
 
@@ -34,4 +37,3 @@ vec2 decodeLightUV(Vertex v) {
     uvec2 light = uvec2(v.y>>24, v.z>>24) & uvec2(0xFFu);
     return vec2(light)/256.0;
 }
-
