@@ -49,14 +49,14 @@ public class AsyncOcclusionTracker {
 
     public AsyncOcclusionTracker(int renderDistance, Long2ReferenceMap<RenderSection> sections, World world, Map<ChunkUpdateType, ArrayDeque<RenderSection>> outputRebuildQueue) {
         this.occlusionCuller = new OcclusionCuller(sections, world);
+        this.renderDistance = renderDistance * 16f;
+        this.outputRebuildQueue = outputRebuildQueue;
+        this.world = world;
+
         this.cullThread = new Thread(this::run);
         this.cullThread.setName("Cull thread");
         this.cullThread.setPriority(MAX_PRIORITY);
         this.cullThread.start();
-        this.renderDistance = renderDistance * 16f;
-
-        this.outputRebuildQueue = outputRebuildQueue;
-        this.world = world;
     }
 
     private void run() {
