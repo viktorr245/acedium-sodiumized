@@ -1,6 +1,9 @@
 package me.cortex.nvidium.mixin.minecraft;
 
 import me.cortex.nvidium.Nvidium;
+import me.cortex.nvidium.util.TerrainFogState;
+import net.minecraft.client.render.BackgroundRenderer;
+import net.minecraft.client.render.Camera;
 import net.minecraft.client.render.GameRenderer;
 import net.minecraft.client.render.WorldRenderer;
 import org.spongepowered.asm.mixin.Mixin;
@@ -25,5 +28,13 @@ public class MixinWorldRenderer {
             return dist == 32 * 16 ? viewDistance : (dist == 256 * 16 ? 9999999 : dist);
         }
         return viewDistance;
+    }
+
+    @Redirect(method = "render", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/render/BackgroundRenderer;applyFog(Lnet/minecraft/client/render/Camera;Lnet/minecraft/client/render/BackgroundRenderer$FogType;FZF)V", ordinal = 1))
+    private void captureTerrainFog(Camera camera, BackgroundRenderer.FogType fogType, float viewDistance, boolean thickFog, float tickDelta) {
+        BackgroundRenderer.applyFog(camera, fogType, viewDistance, thickFog, tickDelta);
+        if (Nvidium.IS_ENABLED) {
+            TerrainFogState.captureFromRenderSystem();
+        }
     }
 }

@@ -13,6 +13,7 @@ import me.cortex.nvidium.managers.RegionVisibilityTracker;
 import me.cortex.nvidium.managers.SectionManager;
 import me.cortex.nvidium.renderers.*;
 import me.cortex.nvidium.util.DownloadTaskStream;
+import me.cortex.nvidium.util.TerrainFogState;
 import me.cortex.nvidium.util.TickableManager;
 import me.cortex.nvidium.util.UploadingBufferStream;
 import net.minecraft.util.math.BlockPos;
@@ -255,7 +256,7 @@ public class RenderPipeline {
             addr += 16;
             new Vector4f(delta,0).getToAddress(addr);//Subchunk offset (note, delta is already negated)
             addr += 16;
-            new Vector4f(RenderSystem.getShaderFogColor()).getToAddress(addr);
+            new Vector4f(TerrainFogState.getColor()).getToAddress(addr);
             addr += 16;
             MemoryUtil.memPutLong(addr, sceneUniform.getDeviceAddress() + SCENE_SIZE);//Put in the location of the region indexs
             addr += 8;
@@ -281,11 +282,11 @@ public class RenderPipeline {
             addr += 8;
             MemoryUtil.memPutLong(addr, statisticsBuffer == null?0:statisticsBuffer.getDeviceAddress());//Logging buffer
             addr += 8;
-            MemoryUtil.memPutFloat(addr, RenderSystem.getShaderFogStart());//FogStart
+            MemoryUtil.memPutFloat(addr, TerrainFogState.getStart());//FogStart
             addr += 4;
-            MemoryUtil.memPutFloat(addr, RenderSystem.getShaderFogEnd());//FogEnd
+            MemoryUtil.memPutFloat(addr, TerrainFogState.getEnd());//FogEnd
             addr += 4;
-            MemoryUtil.memPutInt(addr, RenderSystem.getShaderFogShape().getId());//IsSphericalFog
+            MemoryUtil.memPutInt(addr, TerrainFogState.getShapeId());//IsSphericalFog
             addr += 4;
             MemoryUtil.memPutShort(addr, (short) visibleRegions);
             addr += 2;
