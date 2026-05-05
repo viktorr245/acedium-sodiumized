@@ -418,14 +418,30 @@ public class RenderPipeline {
     }
 
     //TODO: refactor to different location
-    private void removeRegion(int id) {
+    private boolean removeRegion(int id) {
+        if (id < 0 || !sectionManager.getRegionManager().regionExists(id)) {
+            return false;
+        }
         sectionManager.removeRegionById(id);
         regionVisibilityTracking.resetRegion(id);
+        return true;
     }
 
     //TODO: refactor out of the render pipeline along with regionVisibilityTracking and removeRegion and statistics
-    public void removeARegion() {
-        removeRegion(regionVisibilityTracking.findMostLikelyLeastSeenRegion(sectionManager.getRegionManager().maxRegionIndex()));
+    public boolean removeARegion() {
+        var regionManager = sectionManager.getRegionManager();
+        int regionId = regionVisibilityTracking.findMostLikelyLeastSeenRegion(regionManager.maxRegionIndex());
+        if (removeRegion(regionId)) {
+            return true;
+        }
+
+        for (int i = 0; i < regionManager.maxRegionIndex(); i++) {
+            if (removeRegion(i)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /*

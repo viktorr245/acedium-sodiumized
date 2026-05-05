@@ -32,11 +32,11 @@ public class BufferArena {
     }
 
     public int allocQuads(int quadCount) {
-        totalQuads += quadCount;
         int addr = (int) segments.alloc(quadCount);
         if (addr == SegmentedManager.SIZE_LIMIT) {
             return addr;
         }
+        totalQuads += quadCount;
         if (buffer instanceof PersistentSparseAddressableBuffer psab) {
             psab.ensureAllocated(Integer.toUnsignedLong(addr) * 4L * vertexFormatSize, quadCount * 4L * vertexFormatSize);
         }

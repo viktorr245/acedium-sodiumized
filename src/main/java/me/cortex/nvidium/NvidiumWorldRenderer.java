@@ -80,7 +80,10 @@ public class NvidiumWorldRenderer {
         renderPipeline.renderFrame(viewport, matrices, x, y, z);
 
         while (sectionManager.terrainAreana.getUsedMB() > (max_geometry_memory - 100)) {
-            renderPipeline.removeARegion();
+            if (!renderPipeline.removeARegion()) {
+                Nvidium.LOGGER.warn("Terrain arena is above the memory limit, but no region could be evicted");
+                break;
+            }
         }
 
         if (Nvidium.SUPPORTS_PERSISTENT_SPARSE_ADDRESSABLE_BUFFER && (System.currentTimeMillis() - last_sample_time) > 60000) {
