@@ -6,8 +6,19 @@ plugins {
 version = project.mod_version
 group = project.maven_group
 
-sourceCompatibility = JavaVersion.VERSION_21
-targetCompatibility = JavaVersion.VERSION_21
+base {
+    archivesName = project.archives_base_name
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 21
+}
 
 loom {
     runs {
@@ -21,7 +32,6 @@ loom {
 
 processResources {
     inputs.property "version", project.version
-    archivesBaseName = "acedium"
     filesMatching(["META-INF/neoforge.mods.toml", "fabric.mod.json"]) {
         expand "version": project.version
     }
