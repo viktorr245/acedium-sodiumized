@@ -18,8 +18,8 @@ import java.util.List;
 
 
 //NOTE: with sodium async bfs, just reimplement the bfs dont try to convert sodiums bfs into async
-@EventBusSubscriber(bus = EventBusSubscriber.Bus.MOD, value = Dist.CLIENT, modid = Nvidium.MOD_ID)
-@Mod(Nvidium.MOD_ID)
+@EventBusSubscriber(value = Dist.CLIENT, modid = Nvidium.MOD_ID)
+@Mod(value = Nvidium.MOD_ID, dist = Dist.CLIENT)
 public class Nvidium {
     public static final String MOD_ID = "acedium";
     public static String MOD_VERSION;

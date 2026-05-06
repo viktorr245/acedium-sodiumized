@@ -22,7 +22,4 @@ public class IrisCheck {
         }
     }
 
-    public static boolean checkIrisShouldDisable() {
-        return !isShaderPackInUse();
-    }
 }
