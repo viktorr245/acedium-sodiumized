@@ -6,7 +6,7 @@ modId="acedium"
 version="${version}"
 displayName="Acedium Sodiumized"
 displayTest = "IGNORE_SERVER_VERSION"
-logoFile="assets/nvidium/nvidium.png"
+logoFile="assets/acedium/acedium-logo.png"
 authors="Cortex, Ferri_Arnus, viktorr245"
 description='''
 Unofficial continuation of Acedium, a NeoForge port of Nvidium, updated for Sodium 0.6.x on NeoForge 1.21.1.
