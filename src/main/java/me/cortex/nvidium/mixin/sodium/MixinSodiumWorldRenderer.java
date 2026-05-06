@@ -35,15 +35,23 @@ public abstract class MixinSodiumWorldRenderer implements INvidiumWorldRendererG
     @Inject(method = "setupTerrain", at = @At(value = "INVOKE", target = "Lnet/caffeinemc/mods/sodium/client/render/chunk/RenderSectionManager;needsUpdate()Z", shift = At.Shift.BEFORE))
     private void injectTerrainSetup(Camera camera, Viewport viewport, boolean spectator, boolean updateChunksImmediately, CallbackInfo ci) {
         if (Nvidium.IS_ENABLED && Nvidium.config.async_bfs) {
-            ((INvidiumWorldRendererGetter)renderSectionManager).getRenderer().update(camera, viewport, spectator);
+            var renderer = ((INvidiumWorldRendererGetter)renderSectionManager).getRenderer();
+            if (renderer != null) {
+                renderer.update(camera, viewport, spectator);
+            }
         }
     }
 
     @Inject(method = "renderBlockEntities(Lnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/BufferBuilderStorage;Lit/unimi/dsi/fastutil/longs/Long2ObjectMap;FLnet/minecraft/client/render/VertexConsumerProvider$Immediate;DDDLnet/minecraft/client/render/block/entity/BlockEntityRenderDispatcher;Lnet/minecraft/client/network/ClientPlayerEntity;Lcom/llamalad7/mixinextras/sugar/ref/LocalBooleanRef;)V", at = @At("HEAD"), cancellable = true, remap = true)
     private void overrideEntityRenderer(MatrixStack matrices, BufferBuilderStorage bufferBuilders, Long2ObjectMap<SortedSet<BlockBreakingInfo>> blockBreakingProgressions, float tickDelta, VertexConsumerProvider.Immediate immediate, double x, double y, double z, BlockEntityRenderDispatcher blockEntityRenderer, ClientPlayerEntity player, LocalBooleanRef isGlowing, CallbackInfo ci) {
         if (Nvidium.IS_ENABLED && Nvidium.config.async_bfs) {
+            var renderer = ((INvidiumWorldRendererGetter)renderSectionManager).getRenderer();
+            if (renderer == null) {
+                return;
+            }
+
             ci.cancel();
-            var sectionsWithEntities = ((INvidiumWorldRendererGetter)renderSectionManager).getRenderer().getSectionsWithEntities();
+            var sectionsWithEntities = renderer.getSectionsWithEntities();
             for (var section : sectionsWithEntities) {
                 if (section.isDisposed() || section.getCulledBlockEntities() == null)
                     continue;

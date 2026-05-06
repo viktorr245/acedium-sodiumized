@@ -51,7 +51,15 @@ public class MixinRenderSectionManager implements INvidiumWorldRendererGetter {
 
     @Unique
     private static void updateNvidiumIsEnabled() {
-        Nvidium.IS_ENABLED = (!Nvidium.FORCE_DISABLE) && Nvidium.IS_COMPATIBLE && IrisCheck.checkIrisShouldDisable();
+        if (!Nvidium.IS_COMPATIBLE) {
+            Nvidium.setRendererState(false, Nvidium.RendererDisableReason.MISSING_GL_CAPABILITIES);
+        } else if (Nvidium.FORCE_DISABLE) {
+            Nvidium.setRendererState(false, Nvidium.RendererDisableReason.FORCE_DISABLED);
+        } else if (IrisCheck.isShaderPackInUse()) {
+            Nvidium.setRendererState(false, Nvidium.RendererDisableReason.IRIS_SHADER_PACK);
+        } else {
+            Nvidium.setRendererState(true, Nvidium.RendererDisableReason.NONE);
+        }
     }
 
     @Inject(method = "<init>", at = @At("TAIL"))
@@ -77,9 +85,7 @@ public class MixinRenderSectionManager implements INvidiumWorldRendererGetter {
 
     @Inject(method = "destroy", at = @At("TAIL"))
     private void destroy(CallbackInfo ci) {
-        if (Nvidium.IS_ENABLED) {
-            if (renderer == null)
-                throw new IllegalStateException("Pipeline already destroyed");
+        if (renderer != null) {
             ((INvidiumWorldRendererSetter)regions).setWorldRenderer(null);
             renderer.delete();
             renderer = null;
@@ -88,7 +94,7 @@ public class MixinRenderSectionManager implements INvidiumWorldRendererGetter {
 
     @Redirect(method = "onSectionRemoved", at = @At(value = "INVOKE", target = "Lnet/caffeinemc/mods/sodium/client/render/chunk/RenderSection;delete()V"))
     private void deleteSection(RenderSection section) {
-        if (Nvidium.IS_ENABLED) {
+        if (renderer != null) {
             if (Nvidium.config.region_keep_distance == 32) {
                 renderer.deleteSection(section);
             }
@@ -103,7 +109,7 @@ public class MixinRenderSectionManager implements INvidiumWorldRendererGetter {
 
     @Inject(method = "renderLayer", at = @At("HEAD"), cancellable = true)
     public void renderLayer(ChunkRenderMatrices matrices, TerrainRenderPass pass, double x, double y, double z, CallbackInfo ci) {
-        if (Nvidium.IS_ENABLED) {
+        if (Nvidium.IS_ENABLED && renderer != null) {
             ci.cancel();
             pass.startDrawing();
             if (pass == DefaultTerrainRenderPasses.SOLID) {
@@ -117,7 +123,7 @@ public class MixinRenderSectionManager implements INvidiumWorldRendererGetter {
 
     @Inject(method = "getDebugStrings", at = @At("HEAD"), cancellable = true)
     private void redirectDebug(CallbackInfoReturnable<Collection<String>> cir) {
-        if (Nvidium.IS_ENABLED) {
+        if (Nvidium.IS_ENABLED && renderer != null) {
             var debugStrings = new ArrayList<String>();
             renderer.addDebugInfo(debugStrings);
             cir.setReturnValue(debugStrings);
@@ -150,6 +156,9 @@ public class MixinRenderSectionManager implements INvidiumWorldRendererGetter {
     private boolean isSectionVisibleBfs(RenderSection section) {
         //The reason why this is done is that since the bfs search is async it could be updating the frame counter with the next frame
         // while some sections that arnt updated/ticked yet still have the old frame id
+        if (renderer == null) {
+            return false;
+        }
         int delta = Math.abs(section.getLastVisibleFrame() - renderer.getAsyncFrameId());
         return delta <= 1;
     }
@@ -182,7 +191,7 @@ public class MixinRenderSectionManager implements INvidiumWorldRendererGetter {
 
     @Inject(method = "tickVisibleRenders", at = @At("HEAD"), cancellable = true)
     private void redirectAnimatedSpriteUpdates(CallbackInfo ci) {
-        if (Nvidium.IS_ENABLED && Nvidium.config.async_bfs && SodiumClientMod.options().performance.animateOnlyVisibleTextures) {
+        if (Nvidium.IS_ENABLED && renderer != null && Nvidium.config.async_bfs && SodiumClientMod.options().performance.animateOnlyVisibleTextures) {
             ci.cancel();
             var sprites = renderer.getAnimatedSpriteSet();
             if (sprites == null) {
@@ -207,7 +216,7 @@ public class MixinRenderSectionManager implements INvidiumWorldRendererGetter {
 
     @Inject(method = "getVisibleChunkCount", at = @At("HEAD"), cancellable = true)
     private void injectVisibilityCount(CallbackInfoReturnable<Integer> cir) {
-        if (Nvidium.IS_ENABLED && Nvidium.config.async_bfs) {
+        if (Nvidium.IS_ENABLED && renderer != null && Nvidium.config.async_bfs) {
             cir.setReturnValue(this.renderer.getAsyncBfsVisibilityCount());
         }
     }

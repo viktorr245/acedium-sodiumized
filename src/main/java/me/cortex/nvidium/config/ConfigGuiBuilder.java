@@ -34,7 +34,7 @@ public class ConfigGuiBuilder {
                         .build()
                 ).build());
 
-        if (Nvidium.IS_COMPATIBLE && !Nvidium.IS_ENABLED && !Nvidium.FORCE_DISABLE) {
+        if (Nvidium.IS_COMPATIBLE && Nvidium.DISABLE_REASON == Nvidium.RendererDisableReason.IRIS_SHADER_PACK) {
             groups.add(OptionGroup.createBuilder()
                     .add(OptionImpl.createBuilder(boolean.class, store)
                             .setName(Text.literal("Acedium Sodiumized disabled due to shaders being loaded"))
