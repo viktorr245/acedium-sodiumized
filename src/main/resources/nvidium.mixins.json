@@ -13,7 +13,6 @@
     "sodium.MixinChunkBuilderMeshingTask",
     "sodium.MixinChunkBuildOutput",
     "sodium.MixinChunkJobQueue",
-    "sodium.MixinOptionFlag",
     "sodium.MixinRenderRegionManager",
     "sodium.MixinRenderSection",
     "sodium.MixinRenderSectionManager",

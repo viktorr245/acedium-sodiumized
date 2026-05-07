@@ -2,8 +2,8 @@ package me.cortex.nvidium.mixin.sodium;
 
 import me.cortex.nvidium.NvidiumWorldRenderer;
 import me.cortex.nvidium.config.ConfigGuiBuilder;
+import me.cortex.nvidium.config.NvidiumConfigStore;
 import me.cortex.nvidium.sodiumCompat.INvidiumWorldRendererGetter;
-import me.cortex.nvidium.sodiumCompat.NvidiumOptionFlags;
 import net.caffeinemc.mods.sodium.client.gui.SodiumOptionsGUI;
 import net.caffeinemc.mods.sodium.client.gui.options.OptionFlag;
 import net.caffeinemc.mods.sodium.client.gui.options.OptionPage;
@@ -32,7 +32,7 @@ public class MixinSodiumOptionsGUI {
 
     @Inject(method = "applyChanges", at = @At("RETURN"), locals = LocalCapture.CAPTURE_FAILSOFT)
     private void applyShaderReload(CallbackInfo ci, HashSet<OptionStorage<?>> dirtyStorages, EnumSet<OptionFlag> flags, MinecraftClient client) {
-        if (client.world != null && flags.contains(NvidiumOptionFlags.REQUIRES_SHADER_RELOAD)) {
+        if (client.world != null && dirtyStorages.contains(NvidiumConfigStore.INSTANCE)) {
             SodiumWorldRenderer swr = SodiumWorldRenderer.instanceNullable();
             if (swr != null) {
                 NvidiumWorldRenderer pipeline = ((INvidiumWorldRendererGetter)((SodiumWorldRendererAccessor)swr).getRenderSectionManager()).getRenderer();

@@ -2,7 +2,6 @@ package me.cortex.nvidium.config;
 
 import com.google.common.collect.ImmutableList;
 import me.cortex.nvidium.Nvidium;
-import me.cortex.nvidium.sodiumCompat.NvidiumOptionFlags;
 import net.caffeinemc.mods.sodium.client.gui.options.OptionFlag;
 import net.caffeinemc.mods.sodium.client.gui.options.OptionGroup;
 import net.caffeinemc.mods.sodium.client.gui.options.OptionImpact;
@@ -131,7 +130,7 @@ public class ConfigGuiBuilder {
                         .setBinding((opts, value) -> opts.statistics_level = value, opts -> opts.statistics_level)
                         .setEnabled(() -> Nvidium.IS_ENABLED)
                         .setImpact(OptionImpact.LOW)
-                        .setFlags(NvidiumOptionFlags.REQUIRES_SHADER_RELOAD)
+                        .setFlags()
                         .build()
                 ).build());
         if (Nvidium.IS_COMPATIBLE) {
