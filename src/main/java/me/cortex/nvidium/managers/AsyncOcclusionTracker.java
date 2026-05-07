@@ -25,6 +25,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import static java.lang.Thread.MAX_PRIORITY;
 
 public class AsyncOcclusionTracker {
+    private static final int MAX_REBUILD_PRIORITY_BUCKETS = 128;
+
     private final OcclusionCuller occlusionCuller;
     private final Thread cullThread;
     private final World world;
@@ -40,6 +42,7 @@ public class AsyncOcclusionTracker {
     private final AtomicReference<Sprite[]> visibleAnimatedSpritesRef = new AtomicReference<>();
 
     private final Map<ChunkUpdateType, ArrayDeque<RenderSection>> outputRebuildQueue;
+    private final List<RenderSection>[] rebuildPriorityBuckets;
 
     private final float renderDistance;
     private volatile long iterationTimeMillis;
@@ -52,6 +55,7 @@ public class AsyncOcclusionTracker {
         this.renderDistance = renderDistance * 16f;
         this.outputRebuildQueue = outputRebuildQueue;
         this.world = world;
+        this.rebuildPriorityBuckets = createRebuildPriorityBuckets(renderDistance);
 
         this.cullThread = new Thread(this::run);
         this.cullThread.setName("Cull thread");
@@ -59,11 +63,25 @@ public class AsyncOcclusionTracker {
         this.cullThread.start();
     }
 
+    @SuppressWarnings("unchecked")
+    private static List<RenderSection>[] createRebuildPriorityBuckets(int renderDistance) {
+        var buckets = new List[Math.min(renderDistance + 1, MAX_REBUILD_PRIORITY_BUCKETS)];
+        for (int i = 0; i < buckets.length; i++) {
+            buckets[i] = new ArrayList<RenderSection>();
+        }
+        return buckets;
+    }
+
     private void run() {
 
         while (running) {
             framesAhead.acquireUninterruptibly();
             if (!running) break;
+            Viewport viewport = this.viewport;
+            if (viewport == null) {
+                continue;
+            }
+
             long startTime = System.currentTimeMillis();
 
             final boolean animateVisibleSpritesOnly = SodiumClientMod.options().performance.animateOnlyVisibleTextures;
@@ -79,6 +97,7 @@ public class AsyncOcclusionTracker {
                         if ("visit".equals(method.getName()) && args != null && args.length >= 1) {
                             this.visitSection(
                                     (RenderSection) args[0],
+                                    viewport,
                                     chunkUpdates,
                                     blockEntitySections,
                                     animatedSpriteSet,
@@ -115,6 +134,7 @@ public class AsyncOcclusionTracker {
             }
 
             if (!chunkUpdates.isEmpty()) {
+                this.prioritizeChunkUpdates(chunkUpdates, viewport);
                 var previous = atomicBfsResult.getAndSet(chunkUpdates);
                 if (previous != null) {
                     //We need to cleanup our state from a previous iteration
@@ -133,7 +153,35 @@ public class AsyncOcclusionTracker {
         }
     }
 
-    private void visitSection(RenderSection section, List<RenderSection> chunkUpdates, List<RenderSection> blockEntitySections, @Nullable Set<Sprite> animatedSpriteSet, int[] visibleGeometryCounter, boolean animateVisibleSpritesOnly) {
+    private void prioritizeChunkUpdates(List<RenderSection> chunkUpdates, Viewport viewport) {
+        if (chunkUpdates.size() < 2) {
+            return;
+        }
+
+        BlockPos cameraBlock = viewport.getBlockCoord();
+        int cameraChunkX = cameraBlock.getX() >> 4;
+        int cameraChunkY = cameraBlock.getY() >> 4;
+        int cameraChunkZ = cameraBlock.getZ() >> 4;
+        int maxBucket = this.rebuildPriorityBuckets.length - 1;
+
+        for (RenderSection section : chunkUpdates) {
+            int distance = Math.max(
+                    Math.max(Math.abs(section.getChunkX() - cameraChunkX), Math.abs(section.getChunkZ() - cameraChunkZ)),
+                    Math.abs(section.getChunkY() - cameraChunkY)
+            );
+            this.rebuildPriorityBuckets[Math.min(distance, maxBucket)].add(section);
+        }
+
+        int index = 0;
+        for (List<RenderSection> bucket : this.rebuildPriorityBuckets) {
+            for (RenderSection section : bucket) {
+                chunkUpdates.set(index++, section);
+            }
+            bucket.clear();
+        }
+    }
+
+    private void visitSection(RenderSection section, Viewport viewport, List<RenderSection> chunkUpdates, List<RenderSection> blockEntitySections, @Nullable Set<Sprite> animatedSpriteSet, int[] visibleGeometryCounter, boolean animateVisibleSpritesOnly) {
         if (section.getPendingUpdate() != null && section.getTaskCancellationToken() == null) {
             if ((!((IRenderSectionExtension)section).isSubmittedRebuild()) && !((IRenderSectionExtension)section).isSeen()) {//If it is in submission queue or seen dont enqueue
                 //Set that the section has been seen
