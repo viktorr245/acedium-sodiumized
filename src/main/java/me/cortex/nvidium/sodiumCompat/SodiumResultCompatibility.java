@@ -3,6 +3,7 @@ package me.cortex.nvidium.sodiumCompat;
 import it.unimi.dsi.fastutil.longs.LongArrays;
 import net.minecraft.client.MinecraftClient;
 import net.caffeinemc.mods.sodium.client.render.chunk.compile.ChunkBuildOutput;
+import net.caffeinemc.mods.sodium.client.render.chunk.data.BuiltSectionMeshParts;
 import net.caffeinemc.mods.sodium.client.render.chunk.terrain.DefaultTerrainRenderPasses;
 import net.caffeinemc.mods.sodium.client.util.NativeBuffer;
 import org.joml.Vector3i;
@@ -85,18 +86,18 @@ public class SodiumResultCompatibility {
         //Do translucent first
         var translucentData = result.meshes.get(DefaultTerrainRenderPasses.TRANSLUCENT);
         if (translucentData != null) {
-            int[] translucentVertexCounts = translucentData.computeVertexCounts();
+            var translucentSegments = getSegmentLayout(translucentData);
             int quadCount = 0;
             for (int i = 0; i < FACING_COUNT; i++) {
-                quadCount += translucentVertexCounts[i] / 4;
+                quadCount += translucentSegments.vertexCounts[i] / 4;
             }
             int quadId = 0;
             long[] sortingData = new long[quadCount];
             long[] srcs = new long[FACING_COUNT];
-            int partOffset = 0;
+            long translucentBase = MemoryUtil.memAddress(translucentData.getVertexData().getDirectBuffer());
             for (int i = 0; i < FACING_COUNT; i++) {
-                int part = translucentVertexCounts[i];
-                long src = MemoryUtil.memAddress(translucentData.getVertexData().getDirectBuffer()) + (long) partOffset * formatSize;
+                int part = translucentSegments.vertexCounts[i];
+                long src = translucentBase + (long) translucentSegments.sourceOffsets[i] * formatSize;
                 srcs[i] = src;
 
                 float cx = 0;
@@ -136,7 +137,6 @@ public class SodiumResultCompatibility {
                     }
                 }
 
-                partOffset += part;
             }
 
             if (quadId != sortingData.length) {
@@ -159,18 +159,18 @@ public class SodiumResultCompatibility {
 
         var solid = result.meshes.get(DefaultTerrainRenderPasses.SOLID);
         var cutout = result.meshes.get(DefaultTerrainRenderPasses.CUTOUT);
-        int[] solidVertexCounts = solid != null ? solid.computeVertexCounts() : null;
-        int[] cutoutVertexCounts = cutout != null ? cutout.computeVertexCounts() : null;
+        SegmentLayout solidSegments = solid != null ? getSegmentLayout(solid) : null;
+        SegmentLayout cutoutSegments = cutout != null ? getSegmentLayout(cutout) : null;
 
         //Do all but translucent
-        int solidPartOffset = 0;
-        int cutoutPartOffset = 0;
+        long solidBase = solid != null ? MemoryUtil.memAddress(solid.getVertexData().getDirectBuffer()) : 0;
+        long cutoutBase = cutout != null ? MemoryUtil.memAddress(cutout.getVertexData().getDirectBuffer()) : 0;
         for (int i = 0; i < FACING_COUNT; i++) {
             int poff = offset;
             if (solid != null) {
-                int part = solidVertexCounts[i];
+                int part = solidSegments.vertexCounts[i];
                 if (part > 0) {
-                    long src = MemoryUtil.memAddress(solid.getVertexData().getDirectBuffer()) + (long) solidPartOffset * formatSize;
+                    long src = solidBase + (long) solidSegments.sourceOffsets[i] * formatSize;
                     long dst = outPtr + offset * 4L * formatSize;
                     MemoryUtil.memCopy(src, dst, (long) part * formatSize);
 
@@ -181,12 +181,11 @@ public class SodiumResultCompatibility {
 
                     offset += part / 4;
                 }
-                solidPartOffset += part;
             }
             if (cutout != null) {
-                int part = cutoutVertexCounts[i];
+                int part = cutoutSegments.vertexCounts[i];
                 if (part > 0) {
-                    long src = MemoryUtil.memAddress(cutout.getVertexData().getDirectBuffer()) + (long) cutoutPartOffset * formatSize;
+                    long src = cutoutBase + (long) cutoutSegments.sourceOffsets[i] * formatSize;
                     long dst = outPtr + offset * 4L * formatSize;
                     MemoryUtil.memCopy(src, dst, (long) part * formatSize);
 
@@ -197,7 +196,6 @@ public class SodiumResultCompatibility {
 
                     offset += part / 4;
                 }
-                cutoutPartOffset += part;
             }
             outOffsets[i] = (short) (offset - poff);
         }
@@ -206,6 +204,35 @@ public class SodiumResultCompatibility {
             throw new IllegalStateException();
         }
     }
+
+    private static SegmentLayout getSegmentLayout(BuiltSectionMeshParts mesh) {
+        int[] vertexCounts = new int[FACING_COUNT];
+        int[] sourceOffsets = new int[FACING_COUNT];
+
+        int sourceOffset = 0;
+        int[] vertexSegments = mesh.getVertexSegments();
+        for (int i = 0; i < vertexSegments.length; i += 2) {
+            int vertexCount = vertexSegments[i];
+            if (vertexCount == 0) {
+                continue;
+            }
+
+            int facing = vertexSegments[i + 1];
+            if (facing < 0 || facing >= FACING_COUNT) {
+                throw new IllegalStateException("Unexpected mesh facing index: " + facing);
+            }
+
+            vertexCounts[facing] = vertexCount;
+            sourceOffsets[facing] = sourceOffset;
+            sourceOffset += vertexCount;
+        }
+
+        return new SegmentLayout(vertexCounts, sourceOffsets);
+    }
+
+    private record SegmentLayout(int[] vertexCounts, int[] sourceOffsets) {
+    }
+
 
     private static float decodePosition(short v) {
         return Short.toUnsignedInt(v)*(1f/2048.0f)-8.0f;
