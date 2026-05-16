@@ -9,6 +9,7 @@ import org.joml.Vector3i;
 import org.lwjgl.system.MemoryUtil;
 
 public class SodiumResultCompatibility {
+    private static final int FACING_COUNT = 7;
 
     public static RepackagedSectionOutput repackage(ChunkBuildOutput result) {
         int formatSize = NvidiumCompactChunkVertex.STRIDE;
@@ -84,16 +85,17 @@ public class SodiumResultCompatibility {
         //Do translucent first
         var translucentData = result.meshes.get(DefaultTerrainRenderPasses.TRANSLUCENT);
         if (translucentData != null) {
+            int[] translucentVertexCounts = translucentData.computeVertexCounts();
             int quadCount = 0;
-            for (int i = 0; i < 7; i++) {
-                quadCount += translucentData.getVertexCounts()[i] / 4;
+            for (int i = 0; i < FACING_COUNT; i++) {
+                quadCount += translucentVertexCounts[i] / 4;
             }
             int quadId = 0;
             long[] sortingData = new long[quadCount];
-            long[] srcs = new long[7];
+            long[] srcs = new long[FACING_COUNT];
             int partOffset = 0;
-            for (int i = 0; i < 7; i++) {
-                int part = translucentData.getVertexCounts()[i];
+            for (int i = 0; i < FACING_COUNT; i++) {
+                int part = translucentVertexCounts[i];
                 long src = MemoryUtil.memAddress(translucentData.getVertexData().getDirectBuffer()) + (long) partOffset * formatSize;
                 srcs[i] = src;
 
@@ -157,14 +159,16 @@ public class SodiumResultCompatibility {
 
         var solid = result.meshes.get(DefaultTerrainRenderPasses.SOLID);
         var cutout = result.meshes.get(DefaultTerrainRenderPasses.CUTOUT);
+        int[] solidVertexCounts = solid != null ? solid.computeVertexCounts() : null;
+        int[] cutoutVertexCounts = cutout != null ? cutout.computeVertexCounts() : null;
 
         //Do all but translucent
         int solidPartOffset = 0;
         int cutoutPartOffset = 0;
-        for (int i = 0; i < 7; i++) {
+        for (int i = 0; i < FACING_COUNT; i++) {
             int poff = offset;
             if (solid != null) {
-                int part = solid.getVertexCounts()[i];
+                int part = solidVertexCounts[i];
                 if (part > 0) {
                     long src = MemoryUtil.memAddress(solid.getVertexData().getDirectBuffer()) + (long) solidPartOffset * formatSize;
                     long dst = outPtr + offset * 4L * formatSize;
@@ -180,7 +184,7 @@ public class SodiumResultCompatibility {
                 solidPartOffset += part;
             }
             if (cutout != null) {
-                int part = cutout.getVertexCounts()[i];
+                int part = cutoutVertexCounts[i];
                 if (part > 0) {
                     long src = MemoryUtil.memAddress(cutout.getVertexData().getDirectBuffer()) + (long) cutoutPartOffset * formatSize;
                     long dst = outPtr + offset * 4L * formatSize;
@@ -202,7 +206,6 @@ public class SodiumResultCompatibility {
             throw new IllegalStateException();
         }
     }
-
 
     private static float decodePosition(short v) {
         return Short.toUnsignedInt(v)*(1f/2048.0f)-8.0f;

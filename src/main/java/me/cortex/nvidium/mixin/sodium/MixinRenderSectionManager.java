@@ -12,12 +12,15 @@ import net.minecraft.client.world.ClientWorld;
 import net.caffeinemc.mods.sodium.client.SodiumClientMod;
 import net.caffeinemc.mods.sodium.client.gl.device.CommandList;
 import net.caffeinemc.mods.sodium.client.render.chunk.ChunkRenderMatrices;
-import net.caffeinemc.mods.sodium.client.render.chunk.ChunkUpdateType;
 import net.caffeinemc.mods.sodium.client.render.chunk.RenderSection;
 import net.caffeinemc.mods.sodium.client.render.chunk.RenderSectionManager;
+import net.caffeinemc.mods.sodium.client.render.chunk.TaskQueueType;
+import net.caffeinemc.mods.sodium.client.render.chunk.lists.OcclusionSectionCollector;
+import net.caffeinemc.mods.sodium.client.render.chunk.lists.SectionCollector;
 import net.caffeinemc.mods.sodium.client.render.chunk.region.RenderRegionManager;
 import net.caffeinemc.mods.sodium.client.render.chunk.terrain.DefaultTerrainRenderPasses;
 import net.caffeinemc.mods.sodium.client.render.chunk.terrain.TerrainRenderPass;
+import net.caffeinemc.mods.sodium.client.render.chunk.translucent_sorting.SortBehavior;
 import net.caffeinemc.mods.sodium.client.render.chunk.vertex.format.ChunkVertexType;
 import net.caffeinemc.mods.sodium.client.render.viewport.Viewport;
 import org.jetbrains.annotations.NotNull;
@@ -44,8 +47,10 @@ public class MixinRenderSectionManager implements INvidiumWorldRendererGetter {
 
     @Shadow @Final private RenderRegionManager regions;
     @Shadow @Final private Long2ReferenceMap<RenderSection> sectionByPosition;
-    @Shadow private @NotNull Map<ChunkUpdateType, ArrayDeque<RenderSection>> taskLists;
+    @Shadow private @NotNull Map<TaskQueueType, ArrayDeque<RenderSection>> taskLists;
     @Shadow @Final private int renderDistance;
+    @Shadow @Final private SortBehavior sortBehavior;
+    @Shadow private SectionCollector sectionCollector;
     @Unique private NvidiumWorldRenderer renderer;
     @Unique private Viewport viewport;
 
@@ -63,12 +68,12 @@ public class MixinRenderSectionManager implements INvidiumWorldRendererGetter {
     }
 
     @Inject(method = "<init>", at = @At("TAIL"))
-    private void init(ClientWorld world, int renderDistance, CommandList commandList, CallbackInfo ci) {
+    private void init(ClientWorld world, int renderDistance, SortBehavior sortBehavior, CommandList commandList, CallbackInfo ci) {
         updateNvidiumIsEnabled();
         if (Nvidium.IS_ENABLED) {
             if (renderer != null)
                 throw new IllegalStateException("Cannot have multiple world renderers");
-            renderer = new NvidiumWorldRenderer(Nvidium.config.async_bfs?new AsyncOcclusionTracker(renderDistance, sectionByPosition, world, taskLists):null);
+            renderer = new NvidiumWorldRenderer(Nvidium.config.async_bfs?new AsyncOcclusionTracker(renderDistance, sectionByPosition, world, taskLists, sortBehavior):null);
             ((INvidiumWorldRendererSetter)regions).setWorldRenderer(renderer);
         }
     }
@@ -137,15 +142,19 @@ public class MixinRenderSectionManager implements INvidiumWorldRendererGetter {
     }
 
     @Inject(method = "createTerrainRenderList", at = @At("HEAD"), cancellable = true)
-    private void redirectTerrainRenderList(Camera camera, Viewport viewport, int frame, boolean spectator, CallbackInfo ci) {
+    private void redirectTerrainRenderList(Camera camera, Viewport viewport, int frame, boolean spectator, CallbackInfoReturnable<Boolean> cir) {
         if (Nvidium.IS_ENABLED && Nvidium.config.async_bfs) {
-            ci.cancel();
+            var importantRebuildQueueType = SodiumClientMod.options().performance.chunkBuildDeferMode.getImportantRebuildQueueType();
+            var importantSortQueueType = this.sortBehavior.getDeferMode().getImportantRebuildQueueType();
+            this.sectionCollector = new OcclusionSectionCollector(frame, importantRebuildQueueType, importantSortQueueType);
+            cir.setReturnValue(false);
+            cir.cancel();
         }
     }
 
-    @Redirect(method = "submitSectionTasks(Lnet/caffeinemc/mods/sodium/client/render/chunk/compile/executor/ChunkJobCollector;Lnet/caffeinemc/mods/sodium/client/render/chunk/ChunkUpdateType;Z)V", at = @At(value = "INVOKE", target = "Lnet/caffeinemc/mods/sodium/client/render/chunk/RenderSection;setPendingUpdate(Lnet/caffeinemc/mods/sodium/client/render/chunk/ChunkUpdateType;)V"))
-    private void injectEnqueueFalse(RenderSection instance, ChunkUpdateType type) {
-        instance.setPendingUpdate(type);
+    @Redirect(method = "submitSectionTask", at = @At(value = "INVOKE", target = "Lnet/caffeinemc/mods/sodium/client/render/chunk/RenderSection;clearPendingUpdate()V"))
+    private void injectEnqueueFalse(RenderSection instance) {
+        instance.clearPendingUpdate();
         if (Nvidium.IS_ENABLED && Nvidium.config.async_bfs) {
             //We need to reset the fact that its been submitted to the rebuild queue from the build queue
             ((IRenderSectionExtension) instance).isSubmittedRebuild(false);
@@ -199,17 +208,6 @@ public class MixinRenderSectionManager implements INvidiumWorldRendererGetter {
             }
             for (var sprite : sprites) {
                 markSpriteActive(sprite);
-            }
-        }
-    }
-
-    @Inject(method = "scheduleRebuild", at = @At(value = "INVOKE", target = "Lnet/caffeinemc/mods/sodium/client/render/chunk/RenderSection;setPendingUpdate(Lnet/caffeinemc/mods/sodium/client/render/chunk/ChunkUpdateType;)V", shift = At.Shift.AFTER), locals = LocalCapture.CAPTURE_FAILHARD)
-    private void instantReschedule(int x, int y, int z, boolean important, CallbackInfo ci, RenderSection section, ChunkUpdateType pendingUpdate) {
-        if (Nvidium.IS_ENABLED && Nvidium.config.async_bfs) {
-            var queue = taskLists.get(pendingUpdate);
-            if (isSectionVisibleBfs(section) && queue.size() < pendingUpdate.getMaximumQueueSize() && !queue.contains(section)) {
-                ((IRenderSectionExtension)section).isSubmittedRebuild(true);
-                taskLists.get(pendingUpdate).add(section);
             }
         }
     }

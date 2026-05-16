@@ -1,140 +1,146 @@
 package me.cortex.nvidium.config;
 
-import com.google.common.collect.ImmutableList;
 import me.cortex.nvidium.Nvidium;
-import net.caffeinemc.mods.sodium.client.gui.options.OptionFlag;
-import net.caffeinemc.mods.sodium.client.gui.options.OptionGroup;
-import net.caffeinemc.mods.sodium.client.gui.options.OptionImpact;
-import net.caffeinemc.mods.sodium.client.gui.options.OptionImpl;
-import net.caffeinemc.mods.sodium.client.gui.options.OptionPage;
-import net.caffeinemc.mods.sodium.client.gui.options.control.ControlValueFormatter;
-import net.caffeinemc.mods.sodium.client.gui.options.control.CyclingControl;
-import net.caffeinemc.mods.sodium.client.gui.options.control.SliderControl;
-import net.caffeinemc.mods.sodium.client.gui.options.control.TickBoxControl;
+import me.cortex.nvidium.NvidiumWorldRenderer;
+import me.cortex.nvidium.mixin.sodium.SodiumWorldRendererAccessor;
+import me.cortex.nvidium.sodiumCompat.INvidiumWorldRendererGetter;
+import net.caffeinemc.mods.sodium.api.config.ConfigEntryPoint;
+import net.caffeinemc.mods.sodium.api.config.ConfigState;
+import net.caffeinemc.mods.sodium.api.config.option.OptionFlag;
+import net.caffeinemc.mods.sodium.api.config.option.OptionImpact;
+import net.caffeinemc.mods.sodium.api.config.structure.ConfigBuilder;
+import net.caffeinemc.mods.sodium.api.config.structure.EnumOptionBuilder;
+import net.caffeinemc.mods.sodium.client.render.SodiumWorldRenderer;
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.text.Text;
+import net.minecraft.util.Identifier;
 
-import java.util.ArrayList;
-import java.util.List;
+public final class ConfigGuiBuilder implements ConfigEntryPoint {
+    private static final Identifier REGION_KEEP_DISTANCE = id("region_keep_distance");
+    private static final Identifier ENABLE_TEMPORAL_COHERENCE = id("enable_temporal_coherence");
+    private static final Identifier ASYNC_BFS = id("async_bfs");
+    private static final Identifier AUTOMATIC_MEMORY_LIMIT = id("automatic_memory_limit");
+    private static final Identifier MAX_GPU_MEMORY = id("max_gpu_memory");
+    private static final Identifier TRANSLUCENCY_SORTING = id("translucency_sorting");
+    private static final Identifier STATISTICS_LEVEL = id("statistics_level");
 
-public class ConfigGuiBuilder {
-    private static final NvidiumConfigStore store = NvidiumConfigStore.INSTANCE;
+    private final NvidiumConfigStore store = NvidiumConfigStore.INSTANCE;
 
-    public static void addNvidiumGui(List<OptionPage> pages) {
-        List<OptionGroup> groups = new ArrayList<>();
-
-        groups.add(OptionGroup.createBuilder()
-                .add(OptionImpl.createBuilder(boolean.class, store)
-                        .setName(Text.literal("Disable Acedium Sodiumized"))
-                        .setTooltip(Text.literal("Used to disable Acedium Sodiumized (does not save, will re-enable after a relaunch)"))
-                        .setControl(TickBoxControl::new)
-                        .setImpact(OptionImpact.HIGH)
-                        .setBinding((opts, value) -> Nvidium.FORCE_DISABLE = value, opts -> Nvidium.FORCE_DISABLE)
-                        .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
-                        .build()
-                ).build());
-
-        if (Nvidium.IS_COMPATIBLE && Nvidium.DISABLE_REASON == Nvidium.RendererDisableReason.IRIS_SHADER_PACK) {
-            groups.add(OptionGroup.createBuilder()
-                    .add(OptionImpl.createBuilder(boolean.class, store)
-                            .setName(Text.literal("Acedium Sodiumized disabled due to shaders being loaded"))
-                            .setTooltip(Text.literal("Acedium Sodiumized disabled due to shaders being loaded"))
-                            .setControl(TickBoxControl::new)
-                            .setImpact(OptionImpact.VARIES)
-                            .setBinding((opts, value) -> {}, opts -> false)
-                            .setFlags()
-                            .build()
-                    ).build());
-        }
-        groups.add(OptionGroup.createBuilder()
-                .add(OptionImpl.createBuilder(int.class, store)
-                        .setName(Text.translatable("nvidium.options.region_keep_distance.name"))
-                        .setTooltip(Text.translatable("nvidium.options.region_keep_distance.tooltip"))
-                        .setControl(option -> new SliderControl(option, 32, 256, 1, x->Text.literal(x==32?"Vanilla":(x==256?"Keep All":x+" chunks"))))
-                        .setImpact(OptionImpact.VARIES)
-                        .setEnabled(() -> Nvidium.IS_ENABLED)
-                        .setBinding((opts, value) -> opts.region_keep_distance = value, opts -> opts.region_keep_distance)
-                        .setFlags()
-                        .build()
-                ).add(OptionImpl.createBuilder(boolean.class, store)
-                        .setName(Text.translatable("nvidium.options.enable_temporal_coherence.name"))
-                        .setTooltip(Text.translatable("nvidium.options.enable_temporal_coherence.tooltip"))
-                        .setControl(TickBoxControl::new)
-                        .setImpact(OptionImpact.MEDIUM)
-                        .setEnabled(() -> Nvidium.IS_ENABLED)
-                        .setBinding((opts, value) -> opts.enable_temporal_coherence = value, opts -> opts.enable_temporal_coherence)
-                        .setFlags()
-                        .build()
-                ).add(OptionImpl.createBuilder(boolean.class, store)
-                        .setName(Text.translatable("nvidium.options.async_bfs.name"))
-                        .setTooltip(Text.translatable("nvidium.options.async_bfs.tooltip"))
-                        .setControl(TickBoxControl::new)
-                        .setImpact(OptionImpact.HIGH)
-                        .setEnabled(() -> Nvidium.IS_ENABLED)
-                        .setBinding((opts, value) -> opts.async_bfs = value, opts -> opts.async_bfs)
-                        .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
-                        .build()
-                ).add(OptionImpl.createBuilder(boolean.class, store)
-                        .setName(Text.translatable("nvidium.options.automatic_memory_limit.name"))
-                        .setTooltip(Text.translatable("nvidium.options.automatic_memory_limit.tooltip"))
-                        .setControl(TickBoxControl::new)
-                        .setImpact(OptionImpact.VARIES)
-                        .setEnabled(() -> Nvidium.IS_ENABLED)
-                        .setBinding((opts, value) -> opts.automatic_memory = value, opts -> opts.automatic_memory)
-                        .setFlags()
-                        .build())
-                .add(OptionImpl.createBuilder(int.class, store)
-                        .setName(Text.translatable("nvidium.options.max_gpu_memory.name"))
-                        .setTooltip(Text.translatable("nvidium.options.max_gpu_memory.tooltip"))
-                        .setControl(option -> new SliderControl(option, 2048, 32768, 512, ControlValueFormatter.translateVariable("nvidium.options.mb")))
-                        .setImpact(OptionImpact.VARIES)
-                        .setEnabled(() -> Nvidium.IS_ENABLED && !Nvidium.config.automatic_memory)
-                        .setBinding((opts, value) -> opts.max_geometry_memory = value, opts -> opts.max_geometry_memory)
-                        .setFlags(Nvidium.SUPPORTS_PERSISTENT_SPARSE_ADDRESSABLE_BUFFER?new OptionFlag[0]:new OptionFlag[]{OptionFlag.REQUIRES_RENDERER_RELOAD})
-                        .build()
-                ).add(OptionImpl.createBuilder(TranslucencySortingLevel.class, store)
-                        .setName(Text.translatable("nvidium.options.translucency_sorting.name"))
-                        .setTooltip(Text.translatable("nvidium.options.translucency_sorting.tooltip"))
-                        .setControl(
-                                opts -> new CyclingControl<>(
-                                        opts,
-                                        TranslucencySortingLevel.class,
-                                        new Text[]{
+    @Override
+    public void registerConfigLate(ConfigBuilder builder) {
+        builder.registerOwnModOptions()
+                .setNonTintedIcon(Identifier.of("acedium", "acedium-logo.png"))
+                .addPage(builder.createOptionPage()
+                        .setName(Text.translatable("nvidium.options.pages.nvidium"))
+                        .addOptionGroup(builder.createOptionGroup()
+                                .addOption(builder.createBooleanOption(id("force_disable"))
+                                        .setName(Text.literal("Disable Acedium Sodiumized"))
+                                        .setTooltip(Text.literal("Used to disable Acedium Sodiumized (does not save, will re-enable after a relaunch)"))
+                                        .setStorageHandler(() -> {})
+                                        .setBinding(value -> Nvidium.FORCE_DISABLE = value, () -> Nvidium.FORCE_DISABLE)
+                                        .setDefaultValue(false)
+                                        .setImpact(OptionImpact.HIGH)
+                                        .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)))
+                        .addOptionGroup(builder.createOptionGroup()
+                                .addOption(builder.createIntegerOption(REGION_KEEP_DISTANCE)
+                                        .setName(Text.translatable("nvidium.options.region_keep_distance.name"))
+                                        .setTooltip(Text.translatable("nvidium.options.region_keep_distance.tooltip"))
+                                        .setStorageHandler(this.store::save)
+                                        .setBinding(value -> this.store.getData().region_keep_distance = value, () -> this.store.getData().region_keep_distance)
+                                        .setDefaultValue(32)
+                                        .setRange(32, 256, 1)
+                                        .setValueFormatter(value -> Text.literal(value == 32 ? "Vanilla" : (value == 256 ? "Keep All" : value + " chunks")))
+                                        .setEnabled(Nvidium.IS_ENABLED)
+                                        .setImpact(OptionImpact.VARIES)
+                                        .setApplyHook(ConfigGuiBuilder::reloadNvidiumShaders))
+                                .addOption(builder.createBooleanOption(ENABLE_TEMPORAL_COHERENCE)
+                                        .setName(Text.translatable("nvidium.options.enable_temporal_coherence.name"))
+                                        .setTooltip(Text.translatable("nvidium.options.enable_temporal_coherence.tooltip"))
+                                        .setStorageHandler(this.store::save)
+                                        .setBinding(value -> this.store.getData().enable_temporal_coherence = value, () -> this.store.getData().enable_temporal_coherence)
+                                        .setDefaultValue(true)
+                                        .setEnabled(Nvidium.IS_ENABLED)
+                                        .setImpact(OptionImpact.MEDIUM)
+                                        .setApplyHook(ConfigGuiBuilder::reloadNvidiumShaders))
+                                .addOption(builder.createBooleanOption(ASYNC_BFS)
+                                        .setName(Text.translatable("nvidium.options.async_bfs.name"))
+                                        .setTooltip(Text.translatable("nvidium.options.async_bfs.tooltip"))
+                                        .setStorageHandler(this.store::save)
+                                        .setBinding(value -> this.store.getData().async_bfs = value, () -> this.store.getData().async_bfs)
+                                        .setDefaultValue(true)
+                                        .setEnabled(Nvidium.IS_ENABLED)
+                                        .setImpact(OptionImpact.HIGH)
+                                        .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
+                                        .setApplyHook(ConfigGuiBuilder::reloadNvidiumShaders))
+                                .addOption(builder.createBooleanOption(AUTOMATIC_MEMORY_LIMIT)
+                                        .setName(Text.translatable("nvidium.options.automatic_memory_limit.name"))
+                                        .setTooltip(Text.translatable("nvidium.options.automatic_memory_limit.tooltip"))
+                                        .setStorageHandler(this.store::save)
+                                        .setBinding(value -> this.store.getData().automatic_memory = value, () -> this.store.getData().automatic_memory)
+                                        .setDefaultValue(true)
+                                        .setEnabled(Nvidium.IS_ENABLED)
+                                        .setImpact(OptionImpact.VARIES)
+                                        .setApplyHook(ConfigGuiBuilder::reloadNvidiumShaders))
+                                .addOption(builder.createIntegerOption(MAX_GPU_MEMORY)
+                                        .setName(Text.translatable("nvidium.options.max_gpu_memory.name"))
+                                        .setTooltip(Text.translatable("nvidium.options.max_gpu_memory.tooltip"))
+                                        .setStorageHandler(this.store::save)
+                                        .setBinding(value -> this.store.getData().max_geometry_memory = value, () -> this.store.getData().max_geometry_memory)
+                                        .setDefaultValue(2048)
+                                        .setRange(2048, 32768, 512)
+                                        .setValueFormatter(value -> Text.translatable("nvidium.options.mb", value))
+                                        .setEnabledProvider(state -> Nvidium.IS_ENABLED && !state.readBooleanOption(AUTOMATIC_MEMORY_LIMIT), AUTOMATIC_MEMORY_LIMIT)
+                                        .setImpact(OptionImpact.VARIES)
+                                        .setFlags(Nvidium.SUPPORTS_PERSISTENT_SPARSE_ADDRESSABLE_BUFFER ? new OptionFlag[0] : new OptionFlag[]{OptionFlag.REQUIRES_RENDERER_RELOAD})
+                                        .setApplyHook(ConfigGuiBuilder::reloadNvidiumShaders))
+                                .addOption(builder.createEnumOption(TRANSLUCENCY_SORTING, TranslucencySortingLevel.class)
+                                        .setName(Text.translatable("nvidium.options.translucency_sorting.name"))
+                                        .setTooltip(Text.translatable("nvidium.options.translucency_sorting.tooltip"))
+                                        .setStorageHandler(this.store::save)
+                                        .setBinding(value -> this.store.getData().translucency_sorting_level = value, () -> this.store.getData().translucency_sorting_level)
+                                        .setDefaultValue(TranslucencySortingLevel.QUADS)
+                                        .setElementNameProvider(EnumOptionBuilder.nameProviderFrom(
                                                 Text.translatable("nvidium.options.translucency_sorting.none"),
                                                 Text.translatable("nvidium.options.translucency_sorting.sections"),
-                                                Text.translatable("nvidium.options.translucency_sorting.quads")
-                                        }
-                                )
-                        )
-                        .setBinding((opts, value) -> opts.translucency_sorting_level = value, opts -> opts.translucency_sorting_level)
-                        .setEnabled(() -> Nvidium.IS_ENABLED)
-                        .setImpact(OptionImpact.MEDIUM)
-                        //Technically, only need to reload when going from NONE->SECTIONS
-                        .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
-                        .build()
-                ).add(OptionImpl.createBuilder(StatisticsLoggingLevel.class, store)
-                        .setName(Text.translatable("nvidium.options.statistics_level.name"))
-                        .setTooltip(Text.translatable("nvidium.options.statistics_level.tooltip"))
-                        .setControl(
-                                opts -> new CyclingControl<>(
-                                        opts,
-                                        StatisticsLoggingLevel.class,
-                                        new Text[]{
+                                                Text.translatable("nvidium.options.translucency_sorting.quads")))
+                                        .setEnabled(Nvidium.IS_ENABLED)
+                                        .setImpact(OptionImpact.MEDIUM)
+                                        .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
+                                        .setApplyHook(ConfigGuiBuilder::reloadNvidiumShaders))
+                                .addOption(builder.createEnumOption(STATISTICS_LEVEL, StatisticsLoggingLevel.class)
+                                        .setName(Text.translatable("nvidium.options.statistics_level.name"))
+                                        .setTooltip(Text.translatable("nvidium.options.statistics_level.tooltip"))
+                                        .setStorageHandler(this.store::save)
+                                        .setBinding(value -> this.store.getData().statistics_level = value, () -> this.store.getData().statistics_level)
+                                        .setDefaultValue(StatisticsLoggingLevel.NONE)
+                                        .setElementNameProvider(EnumOptionBuilder.nameProviderFrom(
                                                 Text.translatable("nvidium.options.statistics_level.none"),
                                                 Text.translatable("nvidium.options.statistics_level.frustum"),
                                                 Text.translatable("nvidium.options.statistics_level.regions"),
                                                 Text.translatable("nvidium.options.statistics_level.sections"),
-                                                Text.translatable("nvidium.options.statistics_level.quads")
-                                        }
-                                )
-                        )
-                        .setBinding((opts, value) -> opts.statistics_level = value, opts -> opts.statistics_level)
-                        .setEnabled(() -> Nvidium.IS_ENABLED)
-                        .setImpact(OptionImpact.LOW)
-                        .setFlags()
-                        .build()
-                ).build());
-        if (Nvidium.IS_COMPATIBLE) {
-            pages.add(new OptionPage(Text.translatable("nvidium.options.pages.nvidium"), ImmutableList.copyOf(groups)));
+                                                Text.translatable("nvidium.options.statistics_level.quads")))
+                                        .setEnabled(Nvidium.IS_ENABLED)
+                                        .setImpact(OptionImpact.LOW)
+                                        .setApplyHook(ConfigGuiBuilder::reloadNvidiumShaders))));
+    }
+
+    private static Identifier id(String path) {
+        return Identifier.of("acedium", path);
+    }
+
+    private static void reloadNvidiumShaders(ConfigState state) {
+        if (MinecraftClient.getInstance().world == null) {
+            return;
+        }
+
+        SodiumWorldRenderer swr = SodiumWorldRenderer.instanceNullable();
+        if (swr == null) {
+            return;
+        }
+
+        NvidiumWorldRenderer pipeline = ((INvidiumWorldRendererGetter) ((SodiumWorldRendererAccessor) swr).getRenderSectionManager()).getRenderer();
+        if (pipeline != null) {
+            pipeline.reloadShaders();
         }
     }
 }

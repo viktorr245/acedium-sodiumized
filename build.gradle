@@ -51,6 +51,8 @@ repositories {
     }
     maven { url "https://maven.neoforged.net/releases" }
     maven { url = "https://maven.blamejared.com" }
+    maven { url = "https://maven.caffeinemc.net/releases" }
+    maven { url = "https://maven.su5ed.dev/releases" }
 }
 
 dependencies {
@@ -63,5 +65,5 @@ dependencies {
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
     neoForge "net.neoforged:neoforge:${project.neoforge_version}"
 
-    modImplementation("maven.modrinth:sodium:mc1.21.1-0.6.13-neoforge")
+    modImplementation("net.caffeinemc:sodium-neoforge-mod:0.8.12-alpha.2+mc1.21.1")
 }

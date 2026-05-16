@@ -273,7 +273,11 @@ public class RegionManager {
             return false;
         } else {
             //FIXME: should make it use the region data so that the frustum bounds check is more accurate
-            return frustum.isBoxVisible((region.rx<<7)+(1<<6),(region.ry<<6)+(1<<5), (region.rz<<7)+(1<<6), 1<<6, 1<<5, 1<<6);
+            var transform = frustum.getTransform();
+            float centerX = ((region.rx << 7) + (1 << 6) - transform.intX) - transform.fracX;
+            float centerY = ((region.ry << 6) + (1 << 5) - transform.intY) - transform.fracY;
+            float centerZ = ((region.rz << 7) + (1 << 6) - transform.intZ) - transform.fracZ;
+            return frustum.isBoxVisibleDirect(centerX, centerY, centerZ, 1 << 6);
         }
     }
 

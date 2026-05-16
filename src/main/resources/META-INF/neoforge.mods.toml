@@ -9,8 +9,11 @@ displayTest = "IGNORE_SERVER_VERSION"
 logoFile="assets/acedium/acedium-logo.png"
 authors="Cortex, Ferri_Arnus, viktorr245"
 description='''
-Unofficial continuation of Acedium, a NeoForge port of Nvidium, updated for Sodium 0.6.x on NeoForge 1.21.1.
+Unofficial continuation of Acedium, a NeoForge port of Nvidium, updated for Sodium 0.8 alpha on NeoForge 1.21.1.
 '''
+
+[modproperties.acedium]
+"sodium:config_api_user" = "me.cortex.nvidium.config.ConfigGuiBuilder"
 
 [[dependencies.acedium]]
 modId = "neoforge"
@@ -29,7 +32,7 @@ side = "BOTH"
 [[dependencies.acedium]]
 modId="sodium"
 type="required"
-versionRange="[0.6,0.7)"
+versionRange="[0.8.12-alpha.2,0.9)"
 ordering="NONE"
 side="CLIENT"
 

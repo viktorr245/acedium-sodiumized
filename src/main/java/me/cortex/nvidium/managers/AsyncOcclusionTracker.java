@@ -10,14 +10,16 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.world.World;
 import net.caffeinemc.mods.sodium.client.SodiumClientMod;
-import net.caffeinemc.mods.sodium.client.render.chunk.ChunkUpdateType;
+import net.caffeinemc.mods.sodium.client.render.chunk.ChunkUpdateTypes;
 import net.caffeinemc.mods.sodium.client.render.chunk.RenderSection;
 import net.caffeinemc.mods.sodium.client.render.chunk.RenderSectionFlags;
+import net.caffeinemc.mods.sodium.client.render.chunk.TaskQueueType;
+import net.caffeinemc.mods.sodium.client.render.chunk.lists.RenderSectionVisitor;
 import net.caffeinemc.mods.sodium.client.render.chunk.occlusion.OcclusionCuller;
+import net.caffeinemc.mods.sodium.client.render.chunk.translucent_sorting.SortBehavior;
 import net.caffeinemc.mods.sodium.client.render.viewport.Viewport;
 import org.jetbrains.annotations.Nullable;
 
-import java.lang.reflect.Proxy;
 import java.util.*;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicReference;
@@ -41,7 +43,8 @@ public class AsyncOcclusionTracker {
     private final AtomicReference<List<RenderSection>> blockEntitySectionsRef = new AtomicReference<>(new ArrayList<>());
     private final AtomicReference<Sprite[]> visibleAnimatedSpritesRef = new AtomicReference<>();
 
-    private final Map<ChunkUpdateType, ArrayDeque<RenderSection>> outputRebuildQueue;
+    private final Map<TaskQueueType, ArrayDeque<RenderSection>> outputRebuildQueue;
+    private final SortBehavior sortBehavior;
     private final List<RenderSection>[] rebuildPriorityBuckets;
 
     private final float renderDistance;
@@ -50,10 +53,11 @@ public class AsyncOcclusionTracker {
 
     private volatile int chunkVisibilityCount = 0;
 
-    public AsyncOcclusionTracker(int renderDistance, Long2ReferenceMap<RenderSection> sections, World world, Map<ChunkUpdateType, ArrayDeque<RenderSection>> outputRebuildQueue) {
+    public AsyncOcclusionTracker(int renderDistance, Long2ReferenceMap<RenderSection> sections, World world, Map<TaskQueueType, ArrayDeque<RenderSection>> outputRebuildQueue, SortBehavior sortBehavior) {
         this.occlusionCuller = new OcclusionCuller(sections, world);
         this.renderDistance = renderDistance * 16f;
         this.outputRebuildQueue = outputRebuildQueue;
+        this.sortBehavior = sortBehavior;
         this.world = world;
         this.rebuildPriorityBuckets = createRebuildPriorityBuckets(renderDistance);
 
@@ -90,37 +94,14 @@ public class AsyncOcclusionTracker {
             List<RenderSection> blockEntitySections = new ArrayList<>();
             Set<Sprite> animatedSpriteSet = animateVisibleSpritesOnly?new HashSet<>():null;
             int[] visibleGeometryCounter = new int[1];
-            final OcclusionCuller.Visitor visitor = (OcclusionCuller.Visitor) Proxy.newProxyInstance(
-                    OcclusionCuller.Visitor.class.getClassLoader(),
-                    new Class[]{OcclusionCuller.Visitor.class},
-                    (proxy, method, args) -> {
-                        if ("visit".equals(method.getName()) && args != null && args.length >= 1) {
-                            this.visitSection(
-                                    (RenderSection) args[0],
-                                    viewport,
-                                    chunkUpdates,
-                                    blockEntitySections,
-                                    animatedSpriteSet,
-                                    visibleGeometryCounter,
-                                    animateVisibleSpritesOnly
-                            );
-                            return null;
-                        }
-
-                        if ("toString".equals(method.getName())) {
-                            return "AsyncOcclusionTrackerVisitor";
-                        }
-
-                        if ("hashCode".equals(method.getName())) {
-                            return System.identityHashCode(proxy);
-                        }
-
-                        if ("equals".equals(method.getName())) {
-                            return args != null && args.length > 0 && proxy == args[0];
-                        }
-
-                        return null;
-                    }
+            final RenderSectionVisitor visitor = section -> this.visitSection(
+                    section,
+                    viewport,
+                    chunkUpdates,
+                    blockEntitySections,
+                    animatedSpriteSet,
+                    visibleGeometryCounter,
+                    animateVisibleSpritesOnly
             );
 
             frame++;
@@ -182,7 +163,7 @@ public class AsyncOcclusionTracker {
     }
 
     private void visitSection(RenderSection section, Viewport viewport, List<RenderSection> chunkUpdates, List<RenderSection> blockEntitySections, @Nullable Set<Sprite> animatedSpriteSet, int[] visibleGeometryCounter, boolean animateVisibleSpritesOnly) {
-        if (section.getPendingUpdate() != null && section.getTaskCancellationToken() == null) {
+        if (section.getPendingUpdate() != 0 && section.getRunningJob() == null) {
             if ((!((IRenderSectionExtension)section).isSubmittedRebuild()) && !((IRenderSectionExtension)section).isSeen()) {//If it is in submission queue or seen dont enqueue
                 //Set that the section has been seen
                 ((IRenderSectionExtension)section).isSeen(true);
@@ -222,9 +203,10 @@ public class AsyncOcclusionTracker {
                 if (section.isDisposed())
                     continue;
                 var type = section.getPendingUpdate();
-                if (type != null && section.getTaskCancellationToken() == null) {
-                    var queue = outputRebuildQueue.get(type);
-                    if (queue.size() < type.getMaximumQueueSize()) {
+                if (type != 0 && section.getRunningJob() == null) {
+                    var queueType = ChunkUpdateTypes.getQueueType(type, getImportantRebuildQueueType(), getImportantSortQueueType());
+                    var queue = outputRebuildQueue.get(queueType);
+                    if (queue != null && queue.size() < queueType.queueSizeLimit()) {
                         ((IRenderSectionExtension) section).isSubmittedRebuild(true);
                         queue.add(section);
                     }
@@ -233,6 +215,14 @@ public class AsyncOcclusionTracker {
                 ((IRenderSectionExtension) section).isSeen(false);
             }
         }
+    }
+
+    private TaskQueueType getImportantRebuildQueueType() {
+        return SodiumClientMod.options().performance.chunkBuildDeferMode.getImportantRebuildQueueType();
+    }
+
+    private TaskQueueType getImportantSortQueueType() {
+        return this.sortBehavior.getDeferMode().getImportantRebuildQueueType();
     }
 
     public void delete() {
@@ -303,7 +293,7 @@ public class AsyncOcclusionTracker {
 
     public int[] getBuildQueueSizes() {
         var ret = new int[this.outputRebuildQueue.size()];
-        for (var type : ChunkUpdateType.values()) {
+        for (var type : TaskQueueType.values()) {
             ret[type.ordinal()] = this.outputRebuildQueue.get(type).size();
         }
         return ret;
