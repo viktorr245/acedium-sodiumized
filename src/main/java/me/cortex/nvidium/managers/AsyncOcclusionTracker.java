@@ -182,10 +182,14 @@ public class AsyncOcclusionTracker {
     }
 
     private void visitSection(RenderSection section, Viewport viewport, List<RenderSection> chunkUpdates, List<RenderSection> blockEntitySections, @Nullable Set<Sprite> animatedSpriteSet, int[] visibleGeometryCounter, boolean animateVisibleSpritesOnly) {
-        if (section.getPendingUpdate() != null && section.getTaskCancellationToken() == null) {
-            if ((!((IRenderSectionExtension)section).isSubmittedRebuild()) && !((IRenderSectionExtension)section).isSeen()) {//If it is in submission queue or seen dont enqueue
+        var extension = (IRenderSectionExtension)section;
+        var cancellationToken = section.getTaskCancellationToken();
+        var cancelledTask = cancellationToken != null && cancellationToken.isCancelled();
+
+        if (cancelledTask || (section.getPendingUpdate() != null && cancellationToken == null)) {
+            if ((cancelledTask || !extension.isSubmittedRebuild()) && !extension.isSeen()) {//If it is in submission queue or seen dont enqueue
                 //Set that the section has been seen
-                ((IRenderSectionExtension)section).isSeen(true);
+                extension.isSeen(true);
                 chunkUpdates.add(section);
             }
         }
@@ -221,7 +225,13 @@ public class AsyncOcclusionTracker {
             for (var section : bfsResult) {
                 if (section.isDisposed())
                     continue;
+                var cancelledTask = this.clearCancelledTask(section);
                 var type = section.getPendingUpdate();
+                if (cancelledTask && type == null) {
+                    // Sodium drops cancelled jobs without producing a result, so retry the lost build.
+                    type = ChunkUpdateType.REBUILD;
+                    section.setPendingUpdate(type);
+                }
                 if (type != null && section.getTaskCancellationToken() == null) {
                     var queue = outputRebuildQueue.get(type);
                     if (queue.size() < type.getMaximumQueueSize()) {
@@ -233,6 +243,17 @@ public class AsyncOcclusionTracker {
                 ((IRenderSectionExtension) section).isSeen(false);
             }
         }
+    }
+
+    private boolean clearCancelledTask(RenderSection section) {
+        var cancellationToken = section.getTaskCancellationToken();
+        if (cancellationToken == null || !cancellationToken.isCancelled()) {
+            return false;
+        }
+
+        section.setTaskCancellationToken(null);
+        ((IRenderSectionExtension) section).isSubmittedRebuild(false);
+        return true;
     }
 
     public void delete() {
