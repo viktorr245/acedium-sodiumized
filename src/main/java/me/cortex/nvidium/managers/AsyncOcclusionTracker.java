@@ -163,10 +163,14 @@ public class AsyncOcclusionTracker {
     }
 
     private void visitSection(RenderSection section, Viewport viewport, List<RenderSection> chunkUpdates, List<RenderSection> blockEntitySections, @Nullable Set<Sprite> animatedSpriteSet, int[] visibleGeometryCounter, boolean animateVisibleSpritesOnly) {
-        if (section.getPendingUpdate() != 0 && section.getRunningJob() == null) {
-            if ((!((IRenderSectionExtension)section).isSubmittedRebuild()) && !((IRenderSectionExtension)section).isSeen()) {//If it is in submission queue or seen dont enqueue
+        var extension = (IRenderSectionExtension)section;
+        var runningJob = section.getRunningJob();
+        var cancelledJob = runningJob != null && runningJob.isCancelled();
+
+        if (cancelledJob || (section.getPendingUpdate() != 0 && runningJob == null)) {
+            if ((cancelledJob || !extension.isSubmittedRebuild()) && !extension.isSeen()) {//If it is in submission queue or seen dont enqueue
                 //Set that the section has been seen
-                ((IRenderSectionExtension)section).isSeen(true);
+                extension.isSeen(true);
                 chunkUpdates.add(section);
             }
         }
@@ -202,7 +206,13 @@ public class AsyncOcclusionTracker {
             for (var section : bfsResult) {
                 if (section.isDisposed())
                     continue;
+                var cancelledJob = this.clearCancelledRunningJob(section);
                 var type = section.getPendingUpdate();
+                if (cancelledJob && type == 0) {
+                    // Sodium drops cancelled jobs without producing a result, so retry the lost build.
+                    type = ChunkUpdateTypes.REBUILD;
+                    section.setPendingUpdate(type, System.nanoTime());
+                }
                 if (type != 0 && section.getRunningJob() == null) {
                     var queueType = ChunkUpdateTypes.getQueueType(type, getImportantRebuildQueueType(), getImportantSortQueueType());
                     var queue = outputRebuildQueue.get(queueType);
@@ -215,6 +225,17 @@ public class AsyncOcclusionTracker {
                 ((IRenderSectionExtension) section).isSeen(false);
             }
         }
+    }
+
+    private boolean clearCancelledRunningJob(RenderSection section) {
+        var runningJob = section.getRunningJob();
+        if (runningJob == null || !runningJob.isCancelled()) {
+            return false;
+        }
+
+        section.setRunningJob(null);
+        ((IRenderSectionExtension) section).isSubmittedRebuild(false);
+        return true;
     }
 
     private TaskQueueType getImportantRebuildQueueType() {
