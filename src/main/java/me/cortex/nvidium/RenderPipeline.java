@@ -45,7 +45,6 @@ import static org.lwjgl.opengl.NVVertexBufferUnifiedMemory.*;
 public class RenderPipeline {
     public static final int GL_DRAW_INDIRECT_UNIFIED_NV = 0x8F40;
     public static final int GL_DRAW_INDIRECT_ADDRESS_NV = 0x8F41;
-    private static final int SECTIONS_PER_REGION = 256;
 
     private final RenderDevice device;
     private final UploadingBufferStream uploadStream;
@@ -219,7 +218,7 @@ public class RenderPipeline {
                     if (regionVisibilityTracker.get(i)) {//Going from visible to non visible
                         //Clear the visibility bits
                         if (Nvidium.config.enable_temporal_coherence) {
-                            nglClearNamedBufferSubData(sectionVisibility.getId(), GL_R8UI, (long) i << 8, SECTIONS_PER_REGION, GL_RED_INTEGER, GL_UNSIGNED_BYTE, 0);
+                            nglClearNamedBufferSubData(sectionVisibility.getId(), GL_R8UI, (long) i << 8, 255, GL_RED_INTEGER, GL_UNSIGNED_BYTE, 0);
                         }
                     }
                     regionVisibilityTracker.clear(i);
