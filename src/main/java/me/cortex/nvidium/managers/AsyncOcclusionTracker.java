@@ -187,7 +187,7 @@ public class AsyncOcclusionTracker {
         var cancelledTask = cancellationToken != null && cancellationToken.isCancelled();
 
         if (cancelledTask || (section.getPendingUpdate() != null && cancellationToken == null)) {
-            if ((cancelledTask || !extension.isSubmittedRebuild()) && !extension.isSeen()) {//If it is in submission queue or seen dont enqueue
+            if (!extension.isSeen()) {
                 //Set that the section has been seen
                 extension.isSeen(true);
                 chunkUpdates.add(section);
@@ -234,7 +234,7 @@ public class AsyncOcclusionTracker {
                 }
                 if (type != null && section.getTaskCancellationToken() == null) {
                     var queue = outputRebuildQueue.get(type);
-                    if (queue.size() < type.getMaximumQueueSize()) {
+                    if (queue != null && !queue.contains(section) && queue.size() < type.getMaximumQueueSize()) {
                         ((IRenderSectionExtension) section).isSubmittedRebuild(true);
                         queue.add(section);
                     }
