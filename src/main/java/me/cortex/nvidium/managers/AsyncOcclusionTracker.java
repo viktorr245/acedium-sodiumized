@@ -168,7 +168,7 @@ public class AsyncOcclusionTracker {
         var cancelledJob = runningJob != null && runningJob.isCancelled();
 
         if (cancelledJob || (section.getPendingUpdate() != 0 && runningJob == null)) {
-            if ((cancelledJob || !extension.isSubmittedRebuild()) && !extension.isSeen()) {//If it is in submission queue or seen dont enqueue
+            if (!extension.isSeen()) {
                 //Set that the section has been seen
                 extension.isSeen(true);
                 chunkUpdates.add(section);
@@ -216,7 +216,7 @@ public class AsyncOcclusionTracker {
                 if (type != 0 && section.getRunningJob() == null) {
                     var queueType = ChunkUpdateTypes.getQueueType(type, getImportantRebuildQueueType(), getImportantSortQueueType());
                     var queue = outputRebuildQueue.get(queueType);
-                    if (queue != null && queue.size() < queueType.queueSizeLimit()) {
+                    if (queue != null && !queue.contains(section) && queue.size() < queueType.queueSizeLimit()) {
                         ((IRenderSectionExtension) section).isSubmittedRebuild(true);
                         queue.add(section);
                     }
