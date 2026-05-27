@@ -65,5 +65,5 @@ dependencies {
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
     neoForge "net.neoforged:neoforge:${project.neoforge_version}"
 
-    modImplementation("net.caffeinemc:sodium-neoforge-mod:0.8.12-alpha.2+mc1.21.1")
+    modImplementation("net.caffeinemc:sodium-neoforge-mod:0.8.12-alpha.4+mc1.21.1")
 }
