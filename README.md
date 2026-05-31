@@ -25,6 +25,10 @@ Unsupported GPUs, including AMD, Intel, and older NVIDIA cards, cannot use the c
 - Some mod and driver combinations may be less compatible than standard Sodium because this renderer uses NVIDIA-specific OpenGL extensions.
 - Only NeoForge 1.21.1 is currently targeted.
 
+## Known Current Incompatibilities
+
+- Shine
+
 ## Support
 
 If something is broken, feel free to open an issue on GitHub. I will try to reproduce it and fix it.
