@@ -28,13 +28,24 @@ public class NvidiumCompactChunkVertex implements ChunkVertexType {
     @Override
     public ChunkVertexEncoder getEncoder() {
         return (ptr, material, vertices, sectionIndex) -> {
+            float centerU = 0.0f;
+            float centerV = 0.0f;
+            for (var vertex : vertices) {
+                centerU += vertex.u;
+                centerV += vertex.v;
+            }
+            centerU *= 0.25f;
+            centerV *= 0.25f;
+
             for (var vertex : vertices) {
                 int light = compactLight(vertex.light);
+                int u = encodeTexture(centerU, vertex.u);
+                int v = encodeTexture(centerV, vertex.v);
 
                 MemoryUtil.memPutInt(ptr + 0, (encodePosition(vertex.x) << 0) | (encodePosition(vertex.y) << 16));
                 MemoryUtil.memPutInt(ptr + 4, (encodePosition(vertex.z) << 0) | (encodeDrawParameters(material) << 16) | ((light & 0xFF) << 24));
                 MemoryUtil.memPutInt(ptr + 8, (encodeColor(vertex.color, vertex.ao) << 0) | (((light >> 8) & 0xFF) << 24));
-                MemoryUtil.memPutInt(ptr + 12, encodeTexture(vertex.u, vertex.v));
+                MemoryUtil.memPutInt(ptr + 12, packTexture(u, v));
 
                 ptr += STRIDE;
             }
@@ -66,8 +77,17 @@ public class NvidiumCompactChunkVertex implements ChunkVertexType {
         return ColorABGR.pack(r, g, b, 0x00);
     }
 
-    private static int encodeTexture(float u, float v) {
-        return ((Math.round(u * TEXTURE_MAX_VALUE) & 0xFFFF) << 0) |
-                ((Math.round(v * TEXTURE_MAX_VALUE) & 0xFFFF) << 16);
+    private static int encodeTexture(float center, float value) {
+        int bias = value < center ? 1 : -1;
+        int quantized = Math.round(value * TEXTURE_MAX_VALUE) + bias;
+        return (quantized & 0x7FFF) | (sign(bias) << 15);
+    }
+
+    private static int packTexture(int u, int v) {
+        return ((u & 0xFFFF) << 0) | ((v & 0xFFFF) << 16);
+    }
+
+    private static int sign(int value) {
+        return value >>> 31;
     }
 }
