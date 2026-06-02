@@ -3,6 +3,8 @@
 
 #define COLOR_SCALE        1.0 / 255.0
 
+layout(binding = 0) uniform sampler2D tex_diffuse;
+
 vec3 decodeVertexPosition(Vertex v) {
     uvec3 packed_position = uvec3(
         (v.x >>  0) & 0xFFFFu,
@@ -18,8 +20,17 @@ vec4 decodeVertexColour(Vertex v) {
     return vec4(vec3(packed_color) * COLOR_SCALE, 1);
 }
 
+vec2 getTextureCoordShrink() {
+    vec2 atlasSize = vec2(textureSize(tex_diffuse, 0));
+    return vec2(1.0 / float(TEXTURE_MAX_SCALE)) - (1.0 / atlasSize / float(SUB_TEXEL_PRECISION));
+}
+
 vec2 decodeVertexUV(Vertex v) {
-    return vec2(v.w&0xffff,v.w>>16)*(1f/(TEXTURE_MAX_SCALE));
+    uvec2 packed_uv = uvec2(v.w & 0xFFFFu, v.w >> 16);
+    vec2 coord = vec2(packed_uv & 0x7FFFu) * (1.0 / float(TEXTURE_MAX_SCALE));
+    bvec2 positiveBias = bvec2((packed_uv.x & 0x8000u) != 0u, (packed_uv.y & 0x8000u) != 0u);
+    vec2 bias = mix(vec2(-1.0), vec2(1.0), positiveBias);
+    return coord + bias * getTextureCoordShrink();
 }
 
 uint decodeVertexMaterial(Vertex v) {

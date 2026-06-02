@@ -34,6 +34,7 @@ public class ShaderLoader {
         }
 
         builder.add("TEXTURE_MAX_SCALE", String.valueOf(NvidiumCompactChunkVertex.TEXTURE_MAX_VALUE));
+        builder.add("SUB_TEXEL_PRECISION", "256");
 
         return ShaderParser.parseShader(resolveImports(loadShaderSource(path)), builder.build());
     }
