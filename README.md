@@ -1,6 +1,6 @@
 # Acedium Sodiumized
 
-Acedium Sodiumized is an unofficial NeoForge 1.21.1 fork of Acedium, updated for Sodium 0.8 alpha.
+Acedium Sodiumized is an unofficial NeoForge 1.21.1 fork of Acedium, updated for Sodium 0.8.
 
 It swaps Sodium's normal terrain renderer for a Nvidium-style NVIDIA renderer. The goal is to make high render distances and terrain-heavy scenes easier for your system to handle, not to boost every kind of workload.
 
@@ -14,7 +14,7 @@ Acedium Sodiumized keeps terrain geometry in large GPU buffers and uses NVIDIA f
 
 - Minecraft 1.21.1
 - NeoForge 21.1.x
-- Sodium 0.8.12 alpha 4 or newer
+- Sodium 0.8.12 beta 1 or newer
 - **NVIDIA GTX 1600 series or newer**
 
 Unsupported GPUs, including AMD, Intel, and older NVIDIA cards, cannot use the custom renderer. In that case, the mod should stay inactive and Sodium's normal renderer is used.
