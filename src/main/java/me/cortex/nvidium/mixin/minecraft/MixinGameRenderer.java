@@ -22,11 +22,17 @@ public class MixinGameRenderer {
                 && (this.client.player == null || this.client.getCameraEntity() == null);
     }
 
+    // Conservative far plane: rkd*16 matches vanilla at 32 chunks.
+    // For higher render distances, extends proportionally (1 chunk=16 blocks).
+    // rkd*16 is the most conservative formula that's geometrically correct.
     @Inject(method = "getFarPlaneDistance", at = @At("HEAD"), cancellable = true)
     public void method_32796(CallbackInfoReturnable<Float> cir) {
         if (Nvidium.IS_ENABLED) {
-            cir.setReturnValue(16 * 512f);
-            cir.cancel();
+            int regionKeepDistance = Nvidium.config.region_keep_distance;
+            if (regionKeepDistance > 32) {
+                cir.setReturnValue(regionKeepDistance * 16f);
+                cir.cancel();
+            }
         }
     }
 
