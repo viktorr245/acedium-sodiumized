@@ -11,7 +11,7 @@ import org.spongepowered.asm.mixin.injection.ModifyConstant;
 public class MixinBackgroundRenderer {
     @ModifyConstant(method = "applyFog", constant = @Constant(floatValue = 192.0F))
     private static float changeFog(float fog) {
-        if (Nvidium.IS_ENABLED) {
+        if (Nvidium.IS_ENABLED && Nvidium.config.region_keep_distance > 32) {
             return 9999999f;
         } else {
             return fog;
