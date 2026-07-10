@@ -24,10 +24,12 @@ import java.util.*;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static java.lang.Thread.MAX_PRIORITY;
-
 public class AsyncOcclusionTracker {
     private static final int MAX_REBUILD_PRIORITY_BUCKETS = 128;
+    private static final int MAX_OUTPUT_REBUILD_QUEUE_SIZE = 512;
+    private static final int MAX_QUEUED_TRAVERSALS = 1;
+    private static final int MAX_REBUILD_QUEUE_INSERTIONS_PER_FRAME = 128;
+    private static final int MAX_REBUILD_QUEUE_DRAIN_ATTEMPTS_PER_FRAME = MAX_REBUILD_QUEUE_INSERTIONS_PER_FRAME * 4;
 
     private final OcclusionCuller occlusionCuller;
     private final Thread cullThread;
@@ -42,6 +44,8 @@ public class AsyncOcclusionTracker {
     private final AtomicReference<List<RenderSection>> atomicBfsResult = new AtomicReference<>();
     private final AtomicReference<List<RenderSection>> blockEntitySectionsRef = new AtomicReference<>(new ArrayList<>());
     private final AtomicReference<Sprite[]> visibleAnimatedSpritesRef = new AtomicReference<>();
+    private final ArrayDeque<Iterator<RenderSection>> pendingChunkUpdateBatches = new ArrayDeque<>();
+    private final ArrayDeque<RenderSection> blockedChunkUpdates = new ArrayDeque<>();
 
     private final Map<TaskQueueType, ArrayDeque<RenderSection>> outputRebuildQueue;
     private final SortBehavior sortBehavior;
@@ -63,7 +67,7 @@ public class AsyncOcclusionTracker {
 
         this.cullThread = new Thread(this::run);
         this.cullThread.setName("Cull thread");
-        this.cullThread.setPriority(MAX_PRIORITY);
+        this.cullThread.setPriority(Thread.NORM_PRIORITY);
         this.cullThread.start();
     }
 
@@ -167,7 +171,7 @@ public class AsyncOcclusionTracker {
         var runningJob = section.getRunningJob();
         var cancelledJob = runningJob != null && runningJob.isCancelled();
 
-        if (cancelledJob || (section.getPendingUpdate() != 0 && runningJob == null)) {
+        if (cancelledJob || (section.getPendingUpdate() != 0 && runningJob == null && !extension.isSubmittedRebuild())) {
             if (!extension.isSeen()) {
                 //Set that the section has been seen
                 extension.isSeen(true);
@@ -197,33 +201,96 @@ public class AsyncOcclusionTracker {
 
         this.viewport = viewport;
 
-        if (framesAhead.availablePermits() < 5) {//This stops a runaway when the traversal time is greater than frametime
-            framesAhead.release();
-        }
-
         var bfsResult = atomicBfsResult.getAndSet(null);
         if (bfsResult != null) {
-            for (var section : bfsResult) {
-                if (section.isDisposed())
-                    continue;
-                var cancelledJob = this.clearCancelledRunningJob(section);
-                var type = section.getPendingUpdate();
-                if (cancelledJob && type == 0) {
-                    // Sodium drops cancelled jobs without producing a result, so retry the lost build.
-                    type = ChunkUpdateTypes.REBUILD;
-                    section.setPendingUpdate(type, System.nanoTime());
-                }
-                if (type != 0 && section.getRunningJob() == null) {
-                    var queueType = ChunkUpdateTypes.getQueueType(type, getImportantRebuildQueueType(), getImportantSortQueueType());
-                    var queue = outputRebuildQueue.get(queueType);
-                    if (queue != null && !queue.contains(section) && queue.size() < queueType.queueSizeLimit()) {
-                        ((IRenderSectionExtension) section).isSubmittedRebuild(true);
-                        queue.add(section);
-                    }
-                }
-                //Reset that the section has not been seen (whether its been submitted to the queue or not)
-                ((IRenderSectionExtension) section).isSeen(false);
+            // Retain the completed list and consume it incrementally instead of copying every
+            // section on the render thread. Large render distances can produce huge batches.
+            pendingChunkUpdateBatches.addLast(bfsResult.iterator());
+        }
+
+        drainPendingChunkUpdates();
+
+        if (framesAhead.availablePermits() < MAX_QUEUED_TRAVERSALS) {//This stops a runaway when the traversal time is greater than frametime
+            framesAhead.release();
+        }
+    }
+
+    private void drainPendingChunkUpdates() {
+        int submitted = 0;
+        int attempts = MAX_REBUILD_QUEUE_DRAIN_ATTEMPTS_PER_FRAME;
+        int blockedAttemptsRemaining = Math.min(this.blockedChunkUpdates.size(), attempts);
+        boolean pollBlockedNext = blockedAttemptsRemaining > 0;
+
+        while (submitted < MAX_REBUILD_QUEUE_INSERTIONS_PER_FRAME && attempts-- > 0) {
+            RenderSection section = null;
+            if (pollBlockedNext && blockedAttemptsRemaining > 0) {
+                section = this.blockedChunkUpdates.pollFirst();
+                blockedAttemptsRemaining--;
             }
+            if (section == null) {
+                section = this.pollPendingChunkUpdate();
+            }
+            if (section == null && blockedAttemptsRemaining > 0) {
+                section = this.blockedChunkUpdates.pollFirst();
+                blockedAttemptsRemaining--;
+            }
+            if (section == null) {
+                return;
+            }
+
+            // Alternate old queue-blocked work with new BFS results. The retry count is
+            // snapshotted above, so a still-blocked section is attempted at most once here.
+            pollBlockedNext = !pollBlockedNext && blockedAttemptsRemaining > 0;
+
+            var extension = (IRenderSectionExtension) section;
+            if (section.isDisposed()) {
+                extension.isSeen(false);
+                continue;
+            }
+
+            var cancelledJob = this.clearCancelledRunningJob(section);
+            var type = section.getPendingUpdate();
+            if (cancelledJob && type == 0) {
+                // Sodium drops cancelled jobs without producing a result, so retry the lost build.
+                type = ChunkUpdateTypes.REBUILD;
+                section.setPendingUpdate(type, System.nanoTime());
+            }
+
+            if (type == 0 || section.getRunningJob() != null || extension.isSubmittedRebuild()) {
+                extension.isSeen(false);
+                continue;
+            }
+
+            var queueType = ChunkUpdateTypes.getQueueType(type, getImportantRebuildQueueType(), getImportantSortQueueType());
+            var queue = outputRebuildQueue.get(queueType);
+            if (queue == null) {
+                extension.isSeen(false);
+                continue;
+            }
+            int queueSizeLimit = Math.min(queueType.queueSizeLimit(), MAX_OUTPUT_REBUILD_QUEUE_SIZE);
+            if (queue.size() >= queueSizeLimit) {
+                this.blockedChunkUpdates.addLast(section);
+                continue;
+            }
+
+            extension.isSubmittedRebuild(true);
+            queue.addLast(section);
+            extension.isSeen(false);
+            submitted++;
+        }
+    }
+
+    @Nullable
+    private RenderSection pollPendingChunkUpdate() {
+        while (true) {
+            var batch = this.pendingChunkUpdateBatches.peekFirst();
+            if (batch == null) {
+                return null;
+            }
+            if (batch.hasNext()) {
+                return batch.next();
+            }
+            this.pendingChunkUpdateBatches.removeFirst();
         }
     }
 
