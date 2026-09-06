@@ -1,5 +1,8 @@
 package me.cortex.nvidium;
 
+import me.cortex.nvidium.util.RegionKeepDistance;
+import net.minecraft.client.MinecraftClient;
+
 import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
 import it.unimi.dsi.fastutil.ints.*;
@@ -239,9 +242,11 @@ public class RenderPipeline {
 
             //The region data indicies is located at the end of the view.sceneUniform
             IntSortedSet regions = new IntAVLTreeSet();
+            boolean finiteRetention = RegionKeepDistance.hasFiniteRetention(
+                    Nvidium.config.region_keep_distance, MinecraftClient.getInstance().options.getClampedViewDistance());
             for (int i = 0; i < rm.maxRegionIndex(); i++) {
                 if (!rm.regionExists(i)) continue;
-                if (!secondary && (Nvidium.config.region_keep_distance != 256 && Nvidium.config.region_keep_distance != 32) && !rm.withinSquare(Nvidium.config.region_keep_distance+4, i, chunkPos.x, chunkPos.y, chunkPos.z)) {
+                if (!secondary && finiteRetention && !rm.withinSquare(Nvidium.config.region_keep_distance+4, i, chunkPos.x, chunkPos.y, chunkPos.z)) {
                     removeRegion(i);
                     continue;
                 }

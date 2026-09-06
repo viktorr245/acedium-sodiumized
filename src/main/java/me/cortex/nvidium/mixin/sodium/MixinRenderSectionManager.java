@@ -1,5 +1,7 @@
 package me.cortex.nvidium.mixin.sodium;
 
+import me.cortex.nvidium.util.RegionKeepDistance;
+
 import me.cortex.nvidium.compat.SecondaryRenderContext;
 
 import it.unimi.dsi.fastutil.longs.Long2ReferenceMap;
@@ -102,7 +104,7 @@ public class MixinRenderSectionManager implements INvidiumWorldRendererGetter {
     @Redirect(method = "onSectionRemoved", at = @At(value = "INVOKE", target = "Lnet/caffeinemc/mods/sodium/client/render/chunk/RenderSection;delete()V"))
     private void deleteSection(RenderSection section) {
         if (renderer != null) {
-            if (Nvidium.config.region_keep_distance == 32) {
+            if (!RegionKeepDistance.retainsUnloadedSections(Nvidium.config.region_keep_distance, this.renderDistance)) {
                 renderer.deleteSection(section);
             }
         }

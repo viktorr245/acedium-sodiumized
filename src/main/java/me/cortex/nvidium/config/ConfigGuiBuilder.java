@@ -1,5 +1,7 @@
 package me.cortex.nvidium.config;
 
+import me.cortex.nvidium.util.RegionKeepDistance;
+
 import me.cortex.nvidium.Nvidium;
 import me.cortex.nvidium.NvidiumWorldRenderer;
 import me.cortex.nvidium.mixin.sodium.SodiumWorldRendererAccessor;
@@ -49,10 +51,10 @@ public final class ConfigGuiBuilder implements ConfigEntryPoint {
                                         .setBinding(value -> this.store.getData().region_keep_distance = value, () -> this.store.getData().region_keep_distance)
                                         .setDefaultValue(32)
                                         .setRange(32, 256, 1)
-                                        .setValueFormatter(value -> Text.literal(value == 32 ? "Vanilla" : (value == 256 ? "Keep All" : value + " chunks")))
+                                        .setValueFormatter(value -> Text.literal(value == RegionKeepDistance.KEEP_ALL ? "Keep All" : (!RegionKeepDistance.retainsUnloadedSections(value, MinecraftClient.getInstance().options.getClampedViewDistance()) ? "Vanilla" : value + " chunks")))
                                         .setEnabled(Nvidium.IS_ENABLED)
                                         .setImpact(OptionImpact.VARIES)
-                                        .setApplyHook(ConfigGuiBuilder::reloadNvidiumShaders))
+                                        .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD))
                                 .addOption(builder.createBooleanOption(ENABLE_TEMPORAL_COHERENCE)
                                         .setName(Text.translatable("nvidium.options.enable_temporal_coherence.name"))
                                         .setTooltip(Text.translatable("nvidium.options.enable_temporal_coherence.tooltip"))

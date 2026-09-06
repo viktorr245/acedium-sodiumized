@@ -1,5 +1,7 @@
 package me.cortex.nvidium.mixin.minecraft;
 
+import me.cortex.nvidium.util.RegionKeepDistance;
+
 import me.cortex.nvidium.Nvidium;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.GameRenderer;
@@ -22,17 +24,11 @@ public class MixinGameRenderer {
                 && (this.client.player == null || this.client.getCameraEntity() == null);
     }
 
-    // Conservative far plane: rkd*16 matches vanilla at 32 chunks.
-    // For higher render distances, extends proportionally (1 chunk=16 blocks).
-    // rkd*16 is the most conservative formula that's geometrically correct.
-    @Inject(method = "getFarPlaneDistance", at = @At("HEAD"), cancellable = true)
-    public void method_32796(CallbackInfoReturnable<Float> cir) {
+    @Inject(method = "getFarPlaneDistance", at = @At("RETURN"), cancellable = true)
+    private void extendFarPlane(CallbackInfoReturnable<Float> cir) {
         if (Nvidium.IS_ENABLED) {
-            int regionKeepDistance = Nvidium.config.region_keep_distance;
-            if (regionKeepDistance > 32) {
-                cir.setReturnValue(regionKeepDistance * 16f);
-                cir.cancel();
-            }
+            cir.setReturnValue(RegionKeepDistance.farPlaneDistance(
+                    Nvidium.config.region_keep_distance, cir.getReturnValueF()));
         }
     }
 

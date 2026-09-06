@@ -1,5 +1,7 @@
 package me.cortex.nvidium.mixin.minecraft;
 
+import me.cortex.nvidium.util.RegionKeepDistance;
+
 import me.cortex.nvidium.Nvidium;
 import me.cortex.nvidium.util.TerrainFogState;
 import net.minecraft.client.render.BackgroundRenderer;
@@ -24,8 +26,7 @@ public class MixinWorldRenderer {
     private float changeRD(GameRenderer instance) {
         float viewDistance = instance.getViewDistance();
         if (Nvidium.IS_ENABLED) {
-            var dist = Nvidium.config.region_keep_distance * 16;
-            return dist == 32 * 16 ? viewDistance : (dist == 256 * 16 ? 9999999 : dist);
+            return RegionKeepDistance.fogDistance(Nvidium.config.region_keep_distance, viewDistance);
         }
         return viewDistance;
     }
