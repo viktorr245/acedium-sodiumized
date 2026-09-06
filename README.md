@@ -1,20 +1,24 @@
 # Acedium Sodiumized
 
-Acedium Sodiumized is an unofficial NeoForge 1.21.1 fork of Acedium, updated for Sodium 0.8.
+Acedium Sodiumized is an unofficial fork of Acedium for Minecraft 1.21.1 on NeoForge, maintained for Sodium 0.8.
 
-It swaps Sodium's normal terrain renderer for a Nvidium-style NVIDIA renderer. The goal is to make high render distances and terrain-heavy scenes easier for your system to handle, not to boost every kind of workload.
+It replaces Sodium's terrain renderer with an NVIDIA renderer based on Nvidium. It can improve performance when terrain rendering is the bottleneck, especially in scenes with lots of visible terrain. Results depend on your hardware, settings and other mods.
+
+## Supported Versions
+
+**Sodium 0.6 support is discontinued.** Existing releases remain available, but will receive no further updates or fixes. Future development targets Sodium 0.8 on NeoForge for Minecraft 1.21.1.
 
 ## How It Works
 
-Minecraft terrain is split into lots of chunks. Normally, the CPU still has to do a lot of work to get those chunks ready for rendering, even when Sodium makes that path much faster.
+Acedium Sodiumized keeps terrain geometry in GPU buffers and uses NVIDIA features such as mesh shaders to let the GPU do more of the rendering work. Minecraft and Sodium still need to load and build chunks first.
 
-Acedium Sodiumized keeps terrain geometry in large GPU buffers and uses NVIDIA features such as mesh shaders to let the GPU do more of the rendering work. If terrain rendering is your bottleneck, this can reduce CPU overhead and improve FPS.
+Region Keep Distance can retain previously loaded terrain beyond the normal render distance. It does not generate unexplored terrain or request additional chunks from a server. Retaining more terrain uses more GPU memory.
 
 ## Requirements
 
 - Minecraft 1.21.1
 - NeoForge 21.1.x
-- Sodium 0.8.12 beta 1 or newer
+- Sodium for NeoForge, version 0.8.12 beta 1 or later **within the 0.8 series**
 - **NVIDIA GTX 1600 series or newer**
 
 Unsupported GPUs, including AMD, Intel, and older NVIDIA cards, cannot use the custom renderer. In that case, the mod should stay inactive and Sodium's normal renderer is used.
@@ -27,12 +31,14 @@ Unsupported GPUs, including AMD, Intel, and older NVIDIA cards, cannot use the c
 
 ## Support
 
-If something is broken, feel free to open an issue on GitHub. I will try to reproduce it and fix it.
+Before reporting a bug, reproduce it on the latest Acedium Sodiumized release for Sodium 0.8. Reports affecting only the discontinued Sodium 0.6 line will not receive fixes.
+
+[Open an issue](https://github.com/viktorr245/acedium-sodiumized/issues) with your Minecraft, NeoForge, Sodium and Acedium versions, GPU and driver version, relevant mods, reproduction steps, and `latest.log` or a crash report. For rendering problems, include a screenshot or video and whether disabling Acedium changes the behavior.
 
 ## Credits
 
 This project is unofficial and is not affiliated with the original Acedium or Nvidium authors.
 
-- This fork: https://github.com/viktorr245/acedium-sodiumized
-- Original Acedium fork: https://github.com/ferriarnus/acedium
-- Original Nvidium project: https://github.com/MCRcortex/nvidium
+- [Acedium Sodiumized](https://github.com/viktorr245/acedium-sodiumized)
+- [Original Acedium fork](https://github.com/ferriarnus/acedium)
+- [Original Nvidium project](https://github.com/MCRcortex/nvidium)
