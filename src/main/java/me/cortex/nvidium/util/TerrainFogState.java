@@ -1,5 +1,7 @@
 package me.cortex.nvidium.util;
 
+import me.cortex.nvidium.compat.SecondaryRenderContext;
+
 import com.mojang.blaze3d.systems.RenderSystem;
 
 public final class TerrainFogState {
@@ -13,6 +15,19 @@ public final class TerrainFogState {
     }
 
     public static void captureFromRenderSystem() {
+        SecondaryRenderContext.isolate(TerrainFogState.class, () -> {
+            float[] oldColor = color.clone();
+            float oldStart = start, oldEnd = end;
+            int oldShape = shapeId;
+            boolean oldCaptured = captured;
+            return () -> {
+                System.arraycopy(oldColor, 0, color, 0, color.length);
+                start = oldStart;
+                end = oldEnd;
+                shapeId = oldShape;
+                captured = oldCaptured;
+            };
+        });
         float[] currentColor = RenderSystem.getShaderFogColor();
         System.arraycopy(currentColor, 0, color, 0, Math.min(currentColor.length, color.length));
         start = RenderSystem.getShaderFogStart();

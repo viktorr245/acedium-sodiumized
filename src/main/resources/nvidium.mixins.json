@@ -3,6 +3,7 @@
   "package": "me.cortex.nvidium.mixin",
   "compatibilityLevel": "JAVA_21",
   "client": [
+    "compat.MixinVistaCompatHandler",
     "minecraft.MixinClientPlayerInteractionManager",
     "minecraft.LightMapAccessor",
     "minecraft.MixinBackgroundRenderer",

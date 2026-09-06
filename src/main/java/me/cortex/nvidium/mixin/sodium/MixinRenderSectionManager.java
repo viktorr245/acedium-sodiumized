@@ -1,5 +1,7 @@
 package me.cortex.nvidium.mixin.sodium;
 
+import me.cortex.nvidium.compat.SecondaryRenderContext;
+
 import it.unimi.dsi.fastutil.longs.Long2ReferenceMap;
 import me.cortex.nvidium.Nvidium;
 import me.cortex.nvidium.NvidiumWorldRenderer;
@@ -109,6 +111,10 @@ public class MixinRenderSectionManager implements INvidiumWorldRendererGetter {
 
     @Inject(method = "update", at = @At("HEAD"))
     private void trackViewport(Camera camera, Viewport viewport, boolean spectator, CallbackInfo ci) {
+        SecondaryRenderContext.isolate(this, () -> {
+            Viewport previous = this.viewport;
+            return () -> this.viewport = previous;
+        });
         this.viewport = viewport;
     }
 

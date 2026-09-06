@@ -19,6 +19,10 @@ public class ShaderLoader {
     private static final Pattern IMPORT_PATTERN = Pattern.compile("#import <(?<namespace>.*):(?<path>.*)>");
 
     public static String parse(Identifier path) {
+        return parse(path, false);
+    }
+
+    public static String parse(Identifier path, boolean secondaryView) {
         var builder = ShaderConstants.builder();
         if (Nvidium.IS_DEBUG) {
             builder.add("DEBUG");
@@ -29,7 +33,7 @@ public class ShaderLoader {
         }
 
 
-        for (int i = 1; i <= Nvidium.config.translucency_sorting_level.ordinal(); i++) {
+        for (int i = 1; i <= (secondaryView ? 0 : Nvidium.config.translucency_sorting_level.ordinal()); i++) {
             builder.add("TRANSLUCENCY_SORTING_"+TranslucencySortingLevel.values()[i].name());
         }
 

@@ -3,7 +3,7 @@ package me.cortex.nvidium;
 import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
 import it.unimi.dsi.fastutil.ints.*;
-import me.cortex.nvidium.api0.NvidiumAPI;
+import me.cortex.nvidium.compat.SecondaryRenderContext;
 import me.cortex.nvidium.config.StatisticsLoggingLevel;
 import me.cortex.nvidium.config.TranslucencySortingLevel;
 import me.cortex.nvidium.gl.RenderDevice;
@@ -24,12 +24,14 @@ import org.lwjgl.opengl.GL11C;
 import org.lwjgl.system.MemoryUtil;
 
 import java.lang.Math;
+import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.List;
 
 import static me.cortex.nvidium.gl.buffers.PersistentSparseAddressableBuffer.alignUp;
 import static org.lwjgl.opengl.ARBDirectStateAccess.*;
 import static org.lwjgl.opengl.GL11.*;
+import static org.lwjgl.opengl.GL32C.GL_DEPTH_CLAMP;
 import static org.lwjgl.opengl.GL30C.GL_R8UI;
 import static org.lwjgl.opengl.GL30C.GL_RED_INTEGER;
 import static org.lwjgl.opengl.GL42.*;
@@ -61,22 +63,71 @@ public class RenderPipeline {
     private TranslucentTerrainRasterizer translucencyTerrainRasterizer;
     private SortRegionSectionPhase regionSectionSorter;
 
-    private final IDeviceMappedBuffer sceneUniform;
     private static final int SCENE_SIZE = (int) alignUp(4*4*4+4*4+4*4+4+4*4+4*4+8*8+3*4+3+4+8, 2);
 
-    private final IDeviceMappedBuffer regionVisibility;
-    private final IDeviceMappedBuffer sectionVisibility;
-    private final IDeviceMappedBuffer terrainCommandBuffer;
-    private final IDeviceMappedBuffer translucencyCommandBuffer;
-    private final IDeviceMappedBuffer regionSortingList;
-    private final IDeviceMappedBuffer statisticsBuffer;
+    private final ViewState mainView;
+    private ViewState view;
+    private final ArrayList<ViewState> secondaryViews = new ArrayList<>();
+    private TranslucentTerrainRasterizer secondaryTranslucencyRasterizer;
+
+    /** Visibility, commands and uniforms belong to a camera, not to shared terrain geometry. */
+    private final class ViewState {
+        final IDeviceMappedBuffer sceneUniform, regionVisibility, sectionVisibility;
+        final IDeviceMappedBuffer terrainCommandBuffer, translucencyCommandBuffer;
+        final IDeviceMappedBuffer regionSortingList, statisticsBuffer;
+        final BitSet regionVisibilityTracker = new BitSet();
+        final IntSet regionsToSort = new IntOpenHashSet();
+        final Statistics stats = new Statistics();
+        int prevRegionCount, frameId;
+
+        ViewState() {
+            int maxRegions = sectionManager.getRegionManager().maxRegions();
+            sceneUniform = device.createDeviceOnlyMappedBuffer(SCENE_SIZE + maxRegions * 2L);
+            regionVisibility = device.createDeviceOnlyMappedBuffer(maxRegions);
+            sectionVisibility = device.createDeviceOnlyMappedBuffer(maxRegions * 256L);
+            terrainCommandBuffer = device.createDeviceOnlyMappedBuffer(maxRegions * 8L);
+            translucencyCommandBuffer = device.createDeviceOnlyMappedBuffer(maxRegions * 8L);
+            regionSortingList = device.createDeviceOnlyMappedBuffer(maxRegions * 2L);
+            statisticsBuffer = device.createDeviceOnlyMappedBuffer(16);
+            clear();
+        }
+
+        void clear() {
+            glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT);
+            prevRegionCount = 0;
+            frameId = 0;
+            regionVisibilityTracker.clear();
+            regionsToSort.clear();
+            for (var buffer : new IDeviceMappedBuffer[]{regionVisibility, sectionVisibility, statisticsBuffer}) {
+                nglClearNamedBufferData(buffer.getId(), GL_R8UI, GL_RED_INTEGER, GL_UNSIGNED_BYTE, 0);
+            }
+        }
+
+        void delete() {
+            for (var buffer : new IDeviceMappedBuffer[]{sceneUniform, regionVisibility, sectionVisibility,
+                    terrainCommandBuffer, translucencyCommandBuffer, regionSortingList, statisticsBuffer}) {
+                buffer.delete();
+            }
+        }
+    }
+
+    private void selectView() {
+        SecondaryRenderContext.isolate(this, () -> {
+            ViewState previous = view;
+            int index = SecondaryRenderContext.depth() - 1;
+            while (secondaryViews.size() <= index) secondaryViews.add(new ViewState());
+            ViewState next = secondaryViews.get(index);
+            // Sequential mirrors at the same depth may have entirely different cameras.
+            next.clear();
+            view = next;
+            return () -> view = previous;
+        });
+    }
+
     private final IDeviceMappedBuffer transformationArray;
     private final IDeviceMappedBuffer originOffsetArray;
 
-    private final BitSet regionVisibilityTracker;
 
-    //Set of regions that need to be sorted
-    private final IntSet regionsToSort = new IntOpenHashSet();
 
     private static final class Statistics {
         public int frustumCount;
@@ -85,7 +136,6 @@ public class RenderPipeline {
         public int quadCount;
     }
 
-    private final Statistics stats;
 
     public RenderPipeline(RenderDevice device, UploadingBufferStream uploadStream, DownloadTaskStream downloadStream, SectionManager sectionManager) {
         this.device = device;
@@ -100,22 +150,14 @@ public class RenderPipeline {
         translucencyTerrainRasterizer = new TranslucentTerrainRasterizer();
         regionSectionSorter = new SortRegionSectionPhase();
 
-        int maxRegions = sectionManager.getRegionManager().maxRegions();
+        mainView = new ViewState();
+        view = mainView;
 
-        sceneUniform = device.createDeviceOnlyMappedBuffer(SCENE_SIZE + maxRegions*2L);
-        regionVisibility = device.createDeviceOnlyMappedBuffer(maxRegions);
-        sectionVisibility = device.createDeviceOnlyMappedBuffer(maxRegions * 256L);
-        terrainCommandBuffer = device.createDeviceOnlyMappedBuffer(maxRegions*8L);
-        translucencyCommandBuffer = device.createDeviceOnlyMappedBuffer(maxRegions*8L);
-        regionSortingList = device.createDeviceOnlyMappedBuffer(maxRegions*2L);
         this.transformationArray = device.createDeviceOnlyMappedBuffer(RegionManager.MAX_TRANSFORMATION_COUNT * (4*4*4));
         this.originOffsetArray = device.createDeviceOnlyMappedBuffer(RegionManager.MAX_TRANSFORMATION_COUNT * 8);
 
-        regionVisibilityTracker = new BitSet(maxRegions);
-        regionVisibilityTracking = new RegionVisibilityTracker(downloadStream, maxRegions);
+        regionVisibilityTracking = new RegionVisibilityTracker(downloadStream, sectionManager.getRegionManager().maxRegions());
 
-        statisticsBuffer = device.createDeviceOnlyMappedBuffer(4*4);
-        stats = new Statistics();
 
 
         //Initialize the transformationArray buffer to the identity affine transform
@@ -158,14 +200,17 @@ public class RenderPipeline {
         MemoryUtil.memPutLong(ptr, pos);
     }
 
-    private int prevRegionCount;
-    private int frameId;
 
     //ISSUE TODO: regions that where in frustum but are now out of frustum must have the visibility data cleared
     // this is due to funny issue of pain where the section was "visible" last frame cause it didnt get ticked
     public void renderFrame(Viewport frustum, ChunkRenderMatrices crm, double px, double py, double pz) {//NOTE: can use any of the command list rendering commands to basicly draw X indirects using the same shader, thus allowing for terrain to be rendered very efficently
 
-        if (sectionManager.getRegionManager().regionCount() == 0) return;//Dont render anything if there is nothing to render
+        selectView();
+        boolean secondary = SecondaryRenderContext.isActive();
+        if (sectionManager.getRegionManager().regionCount() == 0) {
+            view.prevRegionCount = 0;
+            return;
+        }//Dont render anything if there is nothing to render
 
         final int DEBUG_RENDER_LEVEL = 0;//0: no debug, 1: region debug, 2: section debug
         final boolean WRITE_DEPTH = false;
@@ -192,11 +237,11 @@ public class RenderPipeline {
         //Enqueue all the visible regions
         {
 
-            //The region data indicies is located at the end of the sceneUniform
+            //The region data indicies is located at the end of the view.sceneUniform
             IntSortedSet regions = new IntAVLTreeSet();
             for (int i = 0; i < rm.maxRegionIndex(); i++) {
                 if (!rm.regionExists(i)) continue;
-                if ((Nvidium.config.region_keep_distance != 256 && Nvidium.config.region_keep_distance != 32) && !rm.withinSquare(Nvidium.config.region_keep_distance+4, i, chunkPos.x, chunkPos.y, chunkPos.z)) {
+                if (!secondary && (Nvidium.config.region_keep_distance != 256 && Nvidium.config.region_keep_distance != 32) && !rm.withinSquare(Nvidium.config.region_keep_distance+4, i, chunkPos.x, chunkPos.y, chunkPos.z)) {
                     removeRegion(i);
                     continue;
                 }
@@ -208,27 +253,30 @@ public class RenderPipeline {
                     // in a reverse order to this in the section_raster/task.glsl shader
                     regions.add(((rm.distance(i, chunkPos.x, chunkPos.y, chunkPos.z))<<16)|i);
                     visibleRegions++;
-                    regionVisibilityTracker.set(i);
+                    view.regionVisibilityTracker.set(i);
 
-                    if (rm.isRegionInACameraAxis(i, px, py, pz)) {
-                        regionsToSort.add(i);
+                    if (!secondary && rm.isRegionInACameraAxis(i, px, py, pz)) {
+                        view.regionsToSort.add(i);
                     }
 
                 } else {
-                    if (regionVisibilityTracker.get(i)) {//Going from visible to non visible
+                    if (view.regionVisibilityTracker.get(i)) {//Going from visible to non visible
                         //Clear the visibility bits
                         if (Nvidium.config.enable_temporal_coherence) {
-                            nglClearNamedBufferSubData(sectionVisibility.getId(), GL_R8UI, (long) i << 8, 255, GL_RED_INTEGER, GL_UNSIGNED_BYTE, 0);
+                            nglClearNamedBufferSubData(view.sectionVisibility.getId(), GL_R8UI, (long) i << 8, 255, GL_RED_INTEGER, GL_UNSIGNED_BYTE, 0);
                         }
                     }
-                    regionVisibilityTracker.clear(i);
+                    view.regionVisibilityTracker.clear(i);
                 }
 
             }
 
             regionMap = new short[regions.size()];
-            if (visibleRegions == 0) return;
-            long addr = uploadStream.upload(sceneUniform, SCENE_SIZE, visibleRegions*2);
+            if (visibleRegions == 0) {
+                view.prevRegionCount = 0;
+                return;
+            }
+            long addr = uploadStream.upload(view.sceneUniform, SCENE_SIZE, visibleRegions*2);
             queryAddr = addr;//This is ungodly hacky
             int j = 0;
             for (int i : regions) {
@@ -238,7 +286,7 @@ public class RenderPipeline {
             }
 
             if (Nvidium.config.statistics_level != StatisticsLoggingLevel.NONE) {
-                stats.frustumCount = regions.size();
+                view.stats.frustumCount = regions.size();
             }
         }
 
@@ -246,7 +294,7 @@ public class RenderPipeline {
             //TODO: maybe segment the uniform buffer into 2 parts, always updating and static where static holds pointers
             Vector3f delta = new Vector3f((float) (px-(chunkPos.x<<4)), (float) (py-(chunkPos.y<<4)), (float) (pz-(chunkPos.z<<4)));
             delta.negate();
-            long addr = uploadStream.upload(sceneUniform, 0, SCENE_SIZE);
+            long addr = uploadStream.upload(view.sceneUniform, 0, SCENE_SIZE);
             var mvp =new Matrix4f(crm.projection())
                     .mul(crm.modelView())
                     .translate(delta)//Translate the subchunk position
@@ -258,21 +306,21 @@ public class RenderPipeline {
             addr += 16;
             new Vector4f(TerrainFogState.getColor()).getToAddress(addr);
             addr += 16;
-            MemoryUtil.memPutLong(addr, sceneUniform.getDeviceAddress() + SCENE_SIZE);//Put in the location of the region indexs
+            MemoryUtil.memPutLong(addr, view.sceneUniform.getDeviceAddress() + SCENE_SIZE);//Put in the location of the region indexs
             addr += 8;
             MemoryUtil.memPutLong(addr, sectionManager.getRegionManager().getRegionBufferAddress());
             addr += 8;
             MemoryUtil.memPutLong(addr, sectionManager.getRegionManager().getSectionBufferAddress());
             addr += 8;
-            MemoryUtil.memPutLong(addr, regionVisibility.getDeviceAddress());
+            MemoryUtil.memPutLong(addr, view.regionVisibility.getDeviceAddress());
             addr += 8;
-            MemoryUtil.memPutLong(addr, sectionVisibility.getDeviceAddress());
+            MemoryUtil.memPutLong(addr, view.sectionVisibility.getDeviceAddress());
             addr += 8;
-            MemoryUtil.memPutLong(addr, terrainCommandBuffer.getDeviceAddress());
+            MemoryUtil.memPutLong(addr, view.terrainCommandBuffer.getDeviceAddress());
             addr += 8;
-            MemoryUtil.memPutLong(addr, translucencyCommandBuffer.getDeviceAddress());
+            MemoryUtil.memPutLong(addr, view.translucencyCommandBuffer.getDeviceAddress());
             addr += 8;
-            MemoryUtil.memPutLong(addr, regionSortingList.getDeviceAddress());
+            MemoryUtil.memPutLong(addr, view.regionSortingList.getDeviceAddress());
             addr += 8;
             MemoryUtil.memPutLong(addr, sectionManager.terrainAreana.buffer.getDeviceAddress());
             addr += 8;
@@ -280,7 +328,7 @@ public class RenderPipeline {
             addr += 8;
             MemoryUtil.memPutLong(addr, this.originOffsetArray.getDeviceAddress());
             addr += 8;
-            MemoryUtil.memPutLong(addr, statisticsBuffer == null?0:statisticsBuffer.getDeviceAddress());//Logging buffer
+            MemoryUtil.memPutLong(addr, view.statisticsBuffer == null?0:view.statisticsBuffer.getDeviceAddress());//Logging buffer
             addr += 8;
             MemoryUtil.memPutFloat(addr, TerrainFogState.getStart());//FogStart
             addr += 4;
@@ -290,28 +338,28 @@ public class RenderPipeline {
             addr += 4;
             MemoryUtil.memPutShort(addr, (short) visibleRegions);
             addr += 2;
-            MemoryUtil.memPutByte(addr, (byte) (frameId++));
+            MemoryUtil.memPutByte(addr, (byte) (view.frameId++));
         }
 
         if (Nvidium.config.translucency_sorting_level == TranslucencySortingLevel.NONE) {
-            regionsToSort.clear();
+            view.regionsToSort.clear();
         }
 
-        int regionSortSize = this.regionsToSort.size();
+        int regionSortSize = view.regionsToSort.size();
 
         if (regionSortSize != 0){
-            long regionSortUpload = uploadStream.upload(regionSortingList, 0, regionSortSize * 2);
-            for (int region : regionsToSort) {
+            long regionSortUpload = uploadStream.upload(view.regionSortingList, 0, regionSortSize * 2);
+            for (int region : view.regionsToSort) {
                 MemoryUtil.memPutShort(regionSortUpload, (short) region);
                 regionSortUpload += 2;
             }
-            regionsToSort.clear();
+            view.regionsToSort.clear();
         }
 
         sectionManager.commitChanges();//Commit all uploads done to the terrain and meta data
         uploadStream.commit();
 
-        TickableManager.TickAll();
+        if (!secondary) TickableManager.TickAll();
 
         //if ((err = glGetError()) != 0) {
         //    throw new IllegalStateException("GLERROR: "+err);
@@ -323,11 +371,11 @@ public class RenderPipeline {
         glEnableClientState(GL_ELEMENT_ARRAY_UNIFIED_NV);
         glEnableClientState(GL_DRAW_INDIRECT_UNIFIED_NV);
         //Bind the uniform, it doesnt get wiped between shader changes
-        glBufferAddressRangeNV(GL_UNIFORM_BUFFER_ADDRESS_NV, 0, sceneUniform.getDeviceAddress(), SCENE_SIZE);
+        glBufferAddressRangeNV(GL_UNIFORM_BUFFER_ADDRESS_NV, 0, view.sceneUniform.getDeviceAddress(), SCENE_SIZE);
 
-        if (prevRegionCount != 0) {
+        if (!secondary && view.prevRegionCount != 0) {
             glEnable(GL_DEPTH_TEST);
-            terrainRasterizer.raster(prevRegionCount, terrainCommandBuffer.getDeviceAddress());
+            terrainRasterizer.raster(view.prevRegionCount, view.terrainCommandBuffer.getDeviceAddress());
             glMemoryBarrier(GL_FRAMEBUFFER_BARRIER_BIT);
         }
 
@@ -346,25 +394,35 @@ public class RenderPipeline {
             glEnable(GL_REPRESENTATIVE_FRAGMENT_TEST_NV);
         }
 
-        regionRasterizer.raster(visibleRegions);
+        // Vista's off-axis near plane can cut away the visible faces of a bounding box
+        // without cutting away all terrain inside it. Clamp only the visibility proxies;
+        // actual terrain must still clip at the mirror plane.
+        boolean restoreDepthClamp = secondary && !glIsEnabled(GL_DEPTH_CLAMP);
+        if (restoreDepthClamp) glEnable(GL_DEPTH_CLAMP);
 
-        if (DEBUG_RENDER_LEVEL == 1) {
-            glColorMask(false, false, false, false);
+        try {
+            regionRasterizer.raster(visibleRegions);
+
+            if (DEBUG_RENDER_LEVEL == 1) {
+                glColorMask(false, false, false, false);
+            }
+
+            //glMemoryBarrier(GL_SHADER_GLOBAL_ACCESS_BARRIER_BIT_NV);
+            glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+            //glColorMask(true, true, true, true);
+
+            if (DEBUG_RENDER_LEVEL == 2) {
+                glColorMask(true, true, true, true);
+            }
+            if (DEBUG_RENDER_LEVEL == 2 && WRITE_DEPTH) {
+                glDepthMask(true);
+            }
+
+            sectionRasterizer.raster(visibleRegions);
+        } finally {
+            if (restoreDepthClamp) glDisable(GL_DEPTH_CLAMP);
         }
-
-        //glMemoryBarrier(GL_SHADER_GLOBAL_ACCESS_BARRIER_BIT_NV);
-        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
-
-        //glColorMask(true, true, true, true);
-
-        if (DEBUG_RENDER_LEVEL == 2) {
-            glColorMask(true, true, true, true);
-        }
-        if (DEBUG_RENDER_LEVEL == 2 && WRITE_DEPTH) {
-            glDepthMask(true);
-        }
-
-        sectionRasterizer.raster(visibleRegions);
         glDisable(GL_REPRESENTATIVE_FRAGMENT_TEST_NV);
         glDepthMask(true);
         glColorMask(true, true, true, true);
@@ -372,21 +430,27 @@ public class RenderPipeline {
         //glMemoryBarrier(GL_SHADER_GLOBAL_ACCESS_BARRIER_BIT_NV);
         glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
-        prevRegionCount = visibleRegions;
+
+        view.prevRegionCount = visibleRegions;
 
         //Do temporal rasterization
-        if (Nvidium.config.enable_temporal_coherence) {
+        if (secondary) {
+            // A reflection has no valid previous frame. Draw its current visibility immediately,
+            // including when temporal coherence is disabled in the user's settings.
             glMemoryBarrier(GL_COMMAND_BARRIER_BIT);
-            temporalRasterizer.raster(visibleRegions, terrainCommandBuffer.getDeviceAddress());
+            terrainRasterizer.raster(visibleRegions, view.terrainCommandBuffer.getDeviceAddress());
+        } else if (Nvidium.config.enable_temporal_coherence) {
+            glMemoryBarrier(GL_COMMAND_BARRIER_BIT);
+            temporalRasterizer.raster(visibleRegions, view.terrainCommandBuffer.getDeviceAddress());
         }
 
 
-        {//Do proper visibility tracking
+        if (!secondary) {//Only the main camera influences residency scores
             glDepthMask(false);
             glColorMask(false, false, false, false);
             glEnable(GL_REPRESENTATIVE_FRAGMENT_TEST_NV);
 
-            regionVisibilityTracking.computeVisibility(visibleRegions, regionVisibility, regionMap);
+            regionVisibilityTracking.computeVisibility(visibleRegions, view.regionVisibility, regionMap);
 
             glDisable(GL_REPRESENTATIVE_FRAGMENT_TEST_NV);
             glDepthMask(true);
@@ -415,7 +479,7 @@ public class RenderPipeline {
     }
 
     void enqueueRegionSort(int regionId) {
-        this.regionsToSort.add(regionId);
+        mainView.regionsToSort.add(regionId);
     }
 
     //TODO: refactor to different location
@@ -447,25 +511,34 @@ public class RenderPipeline {
 
     /*
     private void setRegionVisible(long rid) {
-        glClearNamedBufferSubData(regionVisibility.getId(), GL_R8UI, rid, 1, GL_RED_INTEGER, GL_UNSIGNED_BYTE, new int[]{(byte)(1)});
+        glClearNamedBufferSubData(view.regionVisibility.getId(), GL_R8UI, rid, 1, GL_RED_INTEGER, GL_UNSIGNED_BYTE, new int[]{(byte)(1)});
     }*/
 
     //Translucency is rendered in a very cursed and incorrect way
     // it hijacks the unassigned indirect command dispatch and uses that to dispatch the translucent chunks as well
     public void renderTranslucent() {
+        selectView();
+        if (view.prevRegionCount == 0) return;
         glEnableClientState(GL_UNIFORM_BUFFER_UNIFIED_NV);
         glEnableClientState(GL_VERTEX_ATTRIB_ARRAY_UNIFIED_NV);
         glEnableClientState(GL_ELEMENT_ARRAY_UNIFIED_NV);
         glEnableClientState(GL_DRAW_INDIRECT_UNIFIED_NV);
         //Need to rebind the uniform since it might have been wiped
-        glBufferAddressRangeNV(GL_UNIFORM_BUFFER_ADDRESS_NV, 0, sceneUniform.getDeviceAddress(), SCENE_SIZE);
+        glBufferAddressRangeNV(GL_UNIFORM_BUFFER_ADDRESS_NV, 0, view.sceneUniform.getDeviceAddress(), SCENE_SIZE);
 
         //Translucency sorting
         {
             glEnable(GL_DEPTH_TEST);
             RenderSystem.enableBlend();
             RenderSystem.blendFuncSeparate(GlStateManager.SrcFactor.SRC_ALPHA, GlStateManager.DstFactor.ONE_MINUS_SRC_ALPHA, GlStateManager.SrcFactor.ONE, GlStateManager.DstFactor.ONE_MINUS_SRC_ALPHA);
-            translucencyTerrainRasterizer.raster(prevRegionCount, translucencyCommandBuffer.getDeviceAddress());
+            if (SecondaryRenderContext.isActive()) {
+                if (secondaryTranslucencyRasterizer == null) {
+                    secondaryTranslucencyRasterizer = new TranslucentTerrainRasterizer(true);
+                }
+                secondaryTranslucencyRasterizer.raster(view.prevRegionCount, view.translucencyCommandBuffer.getDeviceAddress());
+            } else {
+                translucencyTerrainRasterizer.raster(view.prevRegionCount, view.translucencyCommandBuffer.getDeviceAddress());
+            }
             RenderSystem.disableBlend();
             RenderSystem.defaultBlendFunc();
             glDisable(GL_DEPTH_TEST);
@@ -479,12 +552,14 @@ public class RenderPipeline {
 
 
 
+        if (SecondaryRenderContext.isActive()) return;
+
         //Download statistics
         if (Nvidium.config.statistics_level.ordinal() > StatisticsLoggingLevel.FRUSTUM.ordinal()){
-            downloadStream.download(statisticsBuffer, 0, 4*4, (addr)-> {
-                stats.regionCount = MemoryUtil.memGetInt(addr);
-                stats.sectionCount = MemoryUtil.memGetInt(addr+4);
-                stats.quadCount = MemoryUtil.memGetInt(addr+8);
+            downloadStream.download(view.statisticsBuffer, 0, 4*4, (addr)-> {
+                mainView.stats.regionCount = MemoryUtil.memGetInt(addr);
+                mainView.stats.sectionCount = MemoryUtil.memGetInt(addr+4);
+                mainView.stats.quadCount = MemoryUtil.memGetInt(addr+8);
             });
         }
 
@@ -492,21 +567,19 @@ public class RenderPipeline {
         if (Nvidium.config.statistics_level.ordinal() > StatisticsLoggingLevel.FRUSTUM.ordinal()) {
             //glMemoryBarrier(GL_ALL_BARRIER_BITS);
             //Stupid bloody nvidia not following spec forcing me to use a upload stream
-            long upload = this.uploadStream.upload(statisticsBuffer, 0, 4*4);
+            long upload = this.uploadStream.upload(view.statisticsBuffer, 0, 4*4);
             MemoryUtil.memSet(upload, 0, 4*4);
-            //glClearNamedBufferSubData(statisticsBuffer.getId(), GL_R32UI, 0, 4 * 4, GL_RED_INTEGER, GL_UNSIGNED_INT, new int[]{0});
+            //glClearNamedBufferSubData(view.statisticsBuffer.getId(), GL_R32UI, 0, 4 * 4, GL_RED_INTEGER, GL_UNSIGNED_INT, new int[]{0});
         }
     }
 
     public void delete() {
         regionVisibilityTracking.delete();
 
-        sceneUniform.delete();
-        regionVisibility.delete();
-        sectionVisibility.delete();
-        terrainCommandBuffer.delete();
-        translucencyCommandBuffer.delete();
-        regionSortingList.delete();
+        mainView.delete();
+        secondaryViews.forEach(ViewState::delete);
+        secondaryViews.clear();
+        if (secondaryTranslucencyRasterizer != null) secondaryTranslucencyRasterizer.delete();
 
         terrainRasterizer.delete();
         regionRasterizer.delete();
@@ -517,9 +590,7 @@ public class RenderPipeline {
         this.transformationArray.delete();
         this.originOffsetArray.delete();
 
-        if (statisticsBuffer != null) {
-            statisticsBuffer.delete();
-        }
+
     }
 
     public void addDebugInfo(List<String> info) {
@@ -527,22 +598,26 @@ public class RenderPipeline {
             StringBuilder builder = new StringBuilder();
             builder.append("Statistics: ");
             if (Nvidium.config.statistics_level.ordinal() >=  StatisticsLoggingLevel.FRUSTUM.ordinal()) {
-                builder.append("F: ").append(stats.frustumCount);
+                builder.append("F: ").append(view.stats.frustumCount);
             }
             if (Nvidium.config.statistics_level.ordinal() >=  StatisticsLoggingLevel.REGIONS.ordinal()) {
-                builder.append(", R: ").append(stats.regionCount);
+                builder.append(", R: ").append(view.stats.regionCount);
             }
             if (Nvidium.config.statistics_level.ordinal() >=  StatisticsLoggingLevel.SECTIONS.ordinal()) {
-                builder.append(", S: ").append(stats.sectionCount);
+                builder.append(", S: ").append(view.stats.sectionCount);
             }
             if (Nvidium.config.statistics_level.ordinal() >=  StatisticsLoggingLevel.QUADS.ordinal()) {
-                builder.append(", Q: ").append(stats.quadCount);
+                builder.append(", Q: ").append(view.stats.quadCount);
             }
             info.addAll(List.of(builder.toString().split("\n")));
         }
     }
 
     public void reloadShaders() {
+        if (secondaryTranslucencyRasterizer != null) {
+            secondaryTranslucencyRasterizer.delete();
+            secondaryTranslucencyRasterizer = null;
+        }
         terrainRasterizer.delete();
         regionRasterizer.delete();
         sectionRasterizer.delete();

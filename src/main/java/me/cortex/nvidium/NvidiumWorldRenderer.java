@@ -1,5 +1,7 @@
 package me.cortex.nvidium;
 
+import me.cortex.nvidium.compat.SecondaryRenderContext;
+
 import me.cortex.nvidium.gl.RenderDevice;
 import me.cortex.nvidium.managers.AsyncOcclusionTracker;
 import me.cortex.nvidium.managers.SectionManager;
@@ -78,6 +80,7 @@ public class NvidiumWorldRenderer {
 
     public void renderFrame(Viewport viewport, ChunkRenderMatrices matrices, double x, double y, double z) {
         renderPipeline.renderFrame(viewport, matrices, x, y, z);
+        if (SecondaryRenderContext.isActive()) return;
 
         while (sectionManager.terrainAreana.getUsedMB() > (max_geometry_memory - 100)) {
             if (!renderPipeline.removeARegion()) {
@@ -134,7 +137,7 @@ public class NvidiumWorldRenderer {
     }
 
     public void update(Camera camera, Viewport viewport, boolean spectator) {
-        if (asyncChunkTracker != null) {
+        if (asyncChunkTracker != null && !SecondaryRenderContext.isActive()) {
             asyncChunkTracker.update(viewport, camera, spectator);
         }
     }

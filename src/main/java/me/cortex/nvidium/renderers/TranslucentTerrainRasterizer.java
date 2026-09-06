@@ -23,13 +23,19 @@ public class TranslucentTerrainRasterizer extends Phase {
     private final int blockSampler = glGenSamplers();
     private final int lightSampler = glGenSamplers();
 
-    private final Shader shader = Shader.make()
-            .addSource(TASK, ShaderLoader.parse(Identifier.of("nvidium", "terrain/translucent/task.glsl")))
-            .addSource(MESH, ShaderLoader.parse(Identifier.of("nvidium", "terrain/translucent/mesh.glsl")))
-            .addSource(FRAGMENT, ShaderLoader.parse(Identifier.of("nvidium", "terrain/translucent/frag.frag")))
-            .compile();
+    private final Shader shader;
 
     public TranslucentTerrainRasterizer() {
+        this(false);
+    }
+
+    public TranslucentTerrainRasterizer(boolean secondaryView) {
+        // Secondary views must not reorder the shared terrain arena for the main camera.
+        shader = Shader.make()
+                .addSource(TASK, ShaderLoader.parse(Identifier.of("nvidium", "terrain/translucent/task.glsl"), secondaryView))
+                .addSource(MESH, ShaderLoader.parse(Identifier.of("nvidium", "terrain/translucent/mesh.glsl"), secondaryView))
+                .addSource(FRAGMENT, ShaderLoader.parse(Identifier.of("nvidium", "terrain/translucent/frag.frag"), secondaryView))
+                .compile();
         GL45C.glSamplerParameteri(blockSampler, GL45C.GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_LINEAR);
         GL45C.glSamplerParameteri(blockSampler, GL45C.GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         GL45C.glSamplerParameteri(blockSampler, GL45C.GL_TEXTURE_MIN_LOD, 0);
