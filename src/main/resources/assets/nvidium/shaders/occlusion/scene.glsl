@@ -1,4 +1,12 @@
-#define Vertex uvec4
+// Five scalar words match the CPU's 20-byte Sodium vertex layout.
+// A uvec4 member would increase struct alignment and break the array stride.
+struct Vertex {
+    uint x; // position high bits
+    uint y; // position low bits
+    uint z; // color
+    uint w; // UVs
+    uint data; // block light, sky light, material, section index
+};
 
 // this is cause in the section rasterizer you get less cache misses thus higher throughput
 struct Section {

@@ -1,4 +1,4 @@
-#define MODEL_SCALE        32.0 / 65536.0
+#define MODEL_SCALE        32.0 / 1048576.0
 #define MODEL_ORIGIN       8.0
 
 #define COLOR_SCALE        1.0 / 255.0
@@ -6,11 +6,9 @@
 layout(binding = 0) uniform sampler2D tex_diffuse;
 
 vec3 decodeVertexPosition(Vertex v) {
-    uvec3 packed_position = uvec3(
-        (v.x >>  0) & 0xFFFFu,
-        (v.x >> 16) & 0xFFFFu,
-        (v.y >>  0) & 0xFFFFu
-    );
+    uvec3 high = (uvec3(v.x) >> uvec3(0u, 10u, 20u)) & uvec3(0x3FFu);
+    uvec3 low = (uvec3(v.y) >> uvec3(0u, 10u, 20u)) & uvec3(0x3FFu);
+    uvec3 packed_position = (high << 10u) | low;
 
     return (vec3(packed_position) * MODEL_SCALE) - MODEL_ORIGIN;
 }
@@ -34,7 +32,7 @@ vec2 decodeVertexUV(Vertex v) {
 }
 
 uint decodeVertexMaterial(Vertex v) {
-    return (v.y >> 16) & 0xFFu;
+    return (v.data >> 16) & 0xFFu;
 }
 
 uint decodeVertexAlphaCutoffIndex(Vertex v) {
@@ -56,6 +54,6 @@ float decodeVertexAlphaCutoff(Vertex v) {
 }
 
 vec2 decodeLightUV(Vertex v) {
-    uvec2 light = uvec2(v.y>>24, v.z>>24) & uvec2(0xFFu);
+    uvec2 light = uvec2(v.data, v.data >> 8) & uvec2(0xFFu);
     return vec2(light)/256.0;
 }

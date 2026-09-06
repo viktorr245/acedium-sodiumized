@@ -65,5 +65,15 @@ dependencies {
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
     neoForge "net.neoforged:neoforge:${project.neoforge_version}"
 
-    modImplementation("net.caffeinemc:sodium-neoforge-mod:0.8.12-beta.1+mc1.21.1")
+    modImplementation("net.caffeinemc:sodium-neoforge-mod:0.8.13+mc1.21.1")
+}
+
+// Regression tests exercise the real native vertex encoder and geometry copying.
+dependencies {
+    testImplementation 'junit:junit:4.13.2'
+    def os = System.getProperty('os.name').toLowerCase(Locale.ROOT)
+    def arch = System.getProperty('os.arch')
+    def nativePlatform = os.contains('win') ? 'windows' : (os.contains('mac') ? 'macos' : 'linux')
+    def nativeArch = arch == 'aarch64' ? '-arm64' : ''
+    testRuntimeOnly "org.lwjgl:lwjgl:3.3.3:natives-${nativePlatform}${nativeArch}"
 }

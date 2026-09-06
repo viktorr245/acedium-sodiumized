@@ -9,12 +9,12 @@ import net.minecraft.util.math.MathHelper;
 import org.lwjgl.system.MemoryUtil;
 
 public class NvidiumCompactChunkVertex implements ChunkVertexType {
-    public static final GlVertexFormat VERTEX_FORMAT = new GlVertexFormat(null, null, 16);
+    public static final GlVertexFormat VERTEX_FORMAT = new GlVertexFormat(null, null, 20);
 
-    public static final int STRIDE = 16;
+    public static final int STRIDE = 20;
     public static final NvidiumCompactChunkVertex INSTANCE = new NvidiumCompactChunkVertex();
 
-    private static final int POSITION_MAX_VALUE = 65536;
+    private static final int POSITION_MAX_VALUE = 1 << 20;
     public static final int TEXTURE_MAX_VALUE = 32768;
 
     private static final float MODEL_ORIGIN = 8.0f;
@@ -42,10 +42,17 @@ public class NvidiumCompactChunkVertex implements ChunkVertexType {
                 int u = encodeTexture(centerU, vertex.u);
                 int v = encodeTexture(centerV, vertex.v);
 
-                MemoryUtil.memPutInt(ptr + 0, (encodePosition(vertex.x) << 0) | (encodePosition(vertex.y) << 16));
-                MemoryUtil.memPutInt(ptr + 4, (encodePosition(vertex.z) << 0) | (encodeDrawParameters(material) << 16) | ((light & 0xFF) << 24));
-                MemoryUtil.memPutInt(ptr + 8, (encodeColor(vertex.color, vertex.ao) << 0) | (((light >> 8) & 0xFF) << 24));
+                int x = encodePosition(vertex.x);
+                int y = encodePosition(vertex.y);
+                int z = encodePosition(vertex.z);
+
+                // Sodium's 20-byte layout: two interleaved 20-bit position words,
+                // color, UVs, then light/material/section. Preserve tiny model offsets.
+                MemoryUtil.memPutInt(ptr + 0, packPosition(x >>> 10, y >>> 10, z >>> 10));
+                MemoryUtil.memPutInt(ptr + 4, packPosition(x, y, z));
+                MemoryUtil.memPutInt(ptr + 8, encodeColor(vertex.color, vertex.ao));
                 MemoryUtil.memPutInt(ptr + 12, packTexture(u, v));
+                MemoryUtil.memPutInt(ptr + 16, light | (encodeDrawParameters(material) << 16) | ((sectionIndex & 0xFF) << 24));
 
                 ptr += STRIDE;
             }
@@ -62,7 +69,19 @@ public class NvidiumCompactChunkVertex implements ChunkVertexType {
     }
 
     private static int encodePosition(float v) {
-        return (int) (((MODEL_ORIGIN + v) / MODEL_RANGE) * POSITION_MAX_VALUE);
+        return ((int) (((MODEL_ORIGIN + v) / MODEL_RANGE) * POSITION_MAX_VALUE)) & 0xFFFFF;
+    }
+
+    private static int packPosition(int x, int y, int z) {
+        return (x & 0x3FF) | ((y & 0x3FF) << 10) | ((z & 0x3FF) << 20);
+    }
+
+    // Must match decodeVertexPosition in terrain/vertex_format.glsl.
+    static float decodePosition(long vertex, int axis) {
+        int shift = axis * 10;
+        int high = (MemoryUtil.memGetInt(vertex) >>> shift) & 0x3FF;
+        int low = (MemoryUtil.memGetInt(vertex + 4) >>> shift) & 0x3FF;
+        return ((high << 10) | low) * (MODEL_RANGE / POSITION_MAX_VALUE) - MODEL_ORIGIN;
     }
 
     private static int encodeDrawParameters(int material) {

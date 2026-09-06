@@ -50,10 +50,7 @@ public class SodiumResultCompatibility {
 
 
     private static void copyQuad(long from, long too) {
-        //Quads are 64 bytes big
-        for (long i = 0; i < 64; i += 8) {
-            MemoryUtil.memPutLong(too + i, MemoryUtil.memGetLong(from + i));
-        }
+        MemoryUtil.memCopy(from, too, 4L * NvidiumCompactChunkVertex.STRIDE);
     }
 
     //Everything is /6*4 cause its in indices and we want verticies
@@ -107,9 +104,9 @@ public class SodiumResultCompatibility {
                 for (int j = 0; j < part; j++) {
                     long base = src + (long) j * formatSize;
 
-                    float x = decodePosition(MemoryUtil.memGetShort(base));
-                    float y = decodePosition(MemoryUtil.memGetShort(base + 2));
-                    float z = decodePosition(MemoryUtil.memGetShort(base + 4));
+                    float x = NvidiumCompactChunkVertex.decodePosition(base, 0);
+                    float y = NvidiumCompactChunkVertex.decodePosition(base, 1);
+                    float z = NvidiumCompactChunkVertex.decodePosition(base, 2);
                     updateSectionBounds(min, max, x, y, z);
 
                     cx += x;
@@ -234,14 +231,10 @@ public class SodiumResultCompatibility {
     }
 
 
-    private static float decodePosition(short v) {
-        return Short.toUnsignedInt(v)*(1f/2048.0f)-8.0f;
-    }
-
     private static void updateSectionBounds(Vector3i min, Vector3i max, long vertex) {
-        float x = decodePosition(MemoryUtil.memGetShort(vertex));
-        float y = decodePosition(MemoryUtil.memGetShort(vertex + 2));
-        float z = decodePosition(MemoryUtil.memGetShort(vertex + 4));
+        float x = NvidiumCompactChunkVertex.decodePosition(vertex, 0);
+        float y = NvidiumCompactChunkVertex.decodePosition(vertex, 1);
+        float z = NvidiumCompactChunkVertex.decodePosition(vertex, 2);
         updateSectionBounds(min, max, x, y, z);
     }
 
