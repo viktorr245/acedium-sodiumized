@@ -14,7 +14,7 @@
 
 layout(location = 0) out vec4 colour;
 layout(location = 1) in Interpolants {
-    f16vec2 uv;
+    vec2 uv;
     f16vec3 tint;
     f16vec3 addin;
 };

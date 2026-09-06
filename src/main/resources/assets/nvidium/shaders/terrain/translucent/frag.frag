@@ -16,7 +16,7 @@ layout(location = 0) out vec4 colour;
 layout(location = 1) in Interpolants {
     f16vec3 tint;
     f16vec3 addin;
-    f16vec2 uv;
+    vec2 uv;
 };
 
 layout(binding = 0) uniform sampler2D tex_diffuse;

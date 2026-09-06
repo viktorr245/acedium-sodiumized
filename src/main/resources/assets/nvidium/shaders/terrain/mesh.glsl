@@ -21,7 +21,7 @@ layout(local_size_x = 16) in;
 layout(triangles, max_vertices=64, max_primitives=32) out;
 
 layout(location=1) out Interpolants {
-    f16vec2 uv;
+    vec2 uv;
     f16vec3 tint;
     f16vec3 addin;
 } OUT[];
@@ -75,7 +75,8 @@ Vertex emitVertex(uint vertexBaseId, uint innerId) {
     float mippingBias = decodeVertexMippingBias(V);
     float alphaCutoff = decodeVertexAlphaCutoff(V);
 
-    OUT[outId].uv = f16vec2(decodeVertexUV(V));
+    // Half precision would round the atlas-edge inset back onto the sprite boundary.
+    OUT[outId].uv = decodeVertexUV(V);
 
     vec4 tint = decodeVertexColour(V);
     tint *= sampleLight(decodeLightUV(V));

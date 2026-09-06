@@ -36,7 +36,7 @@ taskNV in Task {
 layout(location=1) out Interpolants {
     f16vec3 tint;
     f16vec3 addin;
-    f16vec2 uv;
+    vec2 uv;
 } OUT[];
 
 layout(binding = 1) uniform sampler2D tex_light;
@@ -61,7 +61,8 @@ void emitVertex(uint vertexBaseId, uint innerId) {
     uint outId = (gl_LocalInvocationID.x<<2)+innerId;
     vec3 pos = decodeVertexPosition(V)+originAndBaseData.xyz;
     gl_MeshVerticesNV[outId].gl_Position = MVP*vec4(pos,1.0);
-    OUT[outId].uv = f16vec2(decodeVertexUV(V));
+    // Half precision would round the atlas-edge inset back onto the sprite boundary.
+    OUT[outId].uv = decodeVertexUV(V);
 
     vec4 tint = decodeVertexColour(V);
     tint *= sampleLight(decodeLightUV(V));
