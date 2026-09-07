@@ -1,5 +1,13 @@
 # Acedium Sodiumized
 
+## Discontinued
+
+**This Sodium 0.6 branch is no longer maintained and will receive no further updates or fixes.**
+
+Development continues on the [Sodium 0.8 branch](https://github.com/viktorr245/acedium-sodiumized/tree/1.21.1-sodium-0.8). Please use that version for updates and bug reports.
+
+The information below is kept for users of older releases.
+
 Acedium Sodiumized is an unofficial NeoForge 1.21.1 fork of Acedium, updated for Sodium 0.6.x.
 
 It swaps Sodium's normal terrain renderer for a Nvidium-style NVIDIA renderer. The goal is to make high render distances and terrain-heavy scenes easier for your system to handle, not to boost every kind of workload.
@@ -31,7 +39,7 @@ Unsupported GPUs, including AMD, Intel, and older NVIDIA cards, cannot use the c
 
 ## Support
 
-If something is broken, feel free to open an issue on GitHub. I will try to reproduce it and fix it.
+Please reproduce any issues on the maintained Sodium 0.8 version before opening a bug report. This Sodium 0.6 branch no longer receives fixes.
 
 ## Credits
 
